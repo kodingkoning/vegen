@@ -378,6 +378,12 @@ static void improvePlan(Packer *Pkr, Plan &P,
       }
   }
 
+  dbgs() << "===Store Seeds===\n";
+  for (auto *VP: Seeds)
+  {
+    dbgs() << *VP << '\n';
+  }
+
   AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
   stable_sort(Seeds, [&](const VectorPack *VP1, const VectorPack *VP2) -> bool {
     auto *SI1 = cast<StoreInst>(VP1->getOrderedValues().front());
@@ -416,6 +422,13 @@ static void improvePlan(Packer *Pkr, Plan &P,
 
   if (Candidates)
     Seeds.append(Candidates->Packs.begin(), Candidates->Packs.end());
+
+  dbgs() << "===Reduction Seeds added===\n";
+  for (auto *VP: Seeds)
+  {
+    dbgs() << *VP << '\n';
+  }
+
 
   Heuristic H(Pkr, Candidates);
 
@@ -459,13 +472,20 @@ static void improvePlan(Packer *Pkr, Plan &P,
     if (VP->isLoad()) {
       if (P2.cost() < P.cost()) {
         P = P2;
-        errs() << "~COST: " << P.cost() << '\n';
+        errs() << "~COST 1: " << P.cost() << '\n';
       }
       continue;
     }
 
     if (Improve(P2, VP->getOperandPacks()))
-      errs() << "~COST: " << P.cost() << '\n';
+      errs() << "~COST 2: " << P.cost() << '\n';
+
+    dbgs() << "===Seed and Plan===\n";
+    dbgs() << *VP << '\n';
+    for (auto *VP: P)
+    {
+      dbgs() << *VP << '\n';
+    }
   }
 
   for (auto *OP : SeedOperands) {
@@ -475,7 +495,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
     if (Improve(P2, {OP})/* || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
         Improve(P2, deinterleave(VPCtx, OP, 4)) ||
         Improve(P2, deinterleave(VPCtx, OP, 8))*/) {
-      errs() << "~COST: " << P.cost() << '\n';
+      errs() << "~COST 3: " << P.cost() << '\n';
     }
   }
 
@@ -486,7 +506,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
 
   bool Optimized;
   do {
-    errs() << "COST: " << P.cost() << '\n';
+    errs() << "COST 4: " << P.cost() << '\n';
     Optimized = false;
     for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I) {
       const OperandPack *OP = I->first;
@@ -823,11 +843,20 @@ float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
   for (auto *VP : Candidates.Packs)
     for (unsigned i : VP->getElements().set_bits())
       Candidates.Inst2Packs[i].push_back(VP);
-
   Plan P(Pkr);
   float ScalarCost = P.cost();
+  dbgs() << "===Vector Pack before improvePlan===\n";
+  for (auto *VP: P)
+  {
+    dbgs() << *VP << '\n';
+  }
   improvePlan(Pkr, P, SeedOperands, &Candidates, BlocksToIgnore);
   Packs.insert(Packs.end(), P.begin(), P.end());
+  dbgs() << "===Vector Pack after improvePlan===\n";
+  for (auto *VP: Packs)
+  {
+    dbgs() << *VP << '\n';
+  }
   if (findDepCycle(Packs, Pkr)) {
     errs() << "Aborting due to dependence cycle\n";
     Packs.clear();

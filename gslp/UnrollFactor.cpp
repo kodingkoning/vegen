@@ -257,6 +257,15 @@ getSeeds(Packer &Pkr, DenseMap<Loop *, UnrolledLoopTy> &DupToOrigLoopMap,
       }
     }
   }
+  // debug output
+  errs() << "print Seed operands\n";
+  for (auto* seed: SeedOperands)
+  {
+    for (auto* v: *seed)
+    {
+      errs() << *v; // print llvm value of seed
+    }
+  }
   return SeedOperands;
 }
 
@@ -420,6 +429,7 @@ void computeUnrollFactor(ArrayRef<const InstBinding *> Insts,
                          LazyValueInfo *LVI, TargetTransformInfo *TTI,
                          BlockFrequencyInfo *BFI, Function *F,
                          const LoopInfo &LI, DenseMap<Loop *, unsigned> &UFs) {
+  errs() << "Compute Unroll Factor\n";
   DenseSet<Loop *> UnrolledLoops;
   for (auto *L : const_cast<LoopInfo &>(LI).getLoopsInPreorder()) {
     if (any_of(UnrolledLoops, [L](Loop *UnrolledL) { return UnrolledL->contains(L); })) {
@@ -444,4 +454,5 @@ void computeUnrollFactor(ArrayRef<const InstBinding *> Insts,
     errs() << "Unroll factor for loop " << L << "(depth=" << L->getLoopDepth()
            << ')' << " " << UFs.lookup(L) << '\n';
   }
+  errs() << *F << '\n';
 }

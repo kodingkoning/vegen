@@ -701,7 +701,7 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
 
     auto *Cond = VL.getInstCond(I);
     auto *VP = ValueToPackMap.lookup(I);
-
+    errs() << "Value To Pack" << *VP << '\n';
     // I is not packed
     if (!VP || shouldSkip(VP)) {
       // Just drop these intrinsics
