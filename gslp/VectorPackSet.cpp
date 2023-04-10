@@ -701,7 +701,8 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
 
     auto *Cond = VL.getInstCond(I);
     auto *VP = ValueToPackMap.lookup(I);
-    errs() << "Value To Pack" << *VP << '\n';
+    //if (VP)
+    //  errs() << "Value To Pack" << *VP << '\n';
     // I is not packed
     if (!VP || shouldSkip(VP)) {
       // Just drop these intrinsics
@@ -908,8 +909,37 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
       // Now we can emit the vector instruction
       ArrayRef<Value *> Vals = VP->getOrderedValues();
       if (VP->isLoad())
+      {
         VecInst =
             VP->emitVectorLoad(Operands, getLoadStoreMask(Vals, &VL), UseScalar, Builder);
+        // emit the vector shuffle here
+        std::vector<std::pair<APInt, Constant*>> ConstantReplaced;
+        for (auto *V: Vals)
+        {
+          if (Pkr.ConstantReplaceds.count(V))
+          {
+            ConstantReplaced = Pkr.ConstantReplaceds[V];
+            break;
+          }
+        }
+        if (!ConstantReplaced.empty())
+        {
+          std::vector<Constant*> Constants;
+          std::vector<int> ShuffleIdxes;
+          for (auto& p: ConstantReplaced)
+          {
+            Constants.push_back(p.second);
+            ShuffleIdxes.push_back(p.first.getSExtValue());
+          }
+          auto *ConstVec = ConstantVector::get(Constants);
+          auto *NewInst = new ShuffleVectorInst(VecInst, ConstVec, ShuffleIdxes);
+          if (auto *I = dyn_cast<Instruction>(VecInst))
+          {
+            NewInst->insertAfter(I);
+          }
+        }
+      }
+
       else if (VP->isStore()) {
         VecInst =
             VP->emitVectorStore(Operands, getLoadStoreMask(Vals, &VL), UseScalar, Builder);

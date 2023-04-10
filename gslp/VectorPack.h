@@ -61,6 +61,9 @@ private:
   int Cost;
   int ProducingCost;
 
+  // newly added
+  llvm::TargetTransformInfo *TTI;
+
   void computeCost(llvm::TargetTransformInfo *TTI);
 
   // Constructor for a generic pack
@@ -70,7 +73,7 @@ private:
              const InstBinding *Producer, llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
         Kind(PackKind::General), Producer(Producer),
-        Matches(Matches.begin(), Matches.end()) {
+        Matches(Matches.begin(), Matches.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -83,7 +86,7 @@ private:
              llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
         Kind(PackKind::Load), IsGatherScatter(IsGatherScatter), CP(CP),
-        Loads(Loads.begin(), Loads.end()) {
+        Loads(Loads.begin(), Loads.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -96,7 +99,7 @@ private:
              llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
         Kind(PackKind::Store), IsGatherScatter(IsGatherScatter), CP(CP),
-        Stores(Stores.begin(), Stores.end()) {
+        Stores(Stores.begin(), Stores.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -107,7 +110,7 @@ private:
              llvm::ArrayRef<llvm::PHINode *> PHIs, llvm::BitVector Elements,
              llvm::BitVector Depended, llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
-        Kind(PackKind::Phi), PHIs(PHIs.begin(), PHIs.end()) {
+        Kind(PackKind::Phi), PHIs(PHIs.begin(), PHIs.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -118,7 +121,7 @@ private:
              llvm::BitVector Elements, llvm::BitVector Depended,
              llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
-        Kind(PackKind::Reduction), Rdx(RI), RdxLen(RdxLen) {
+        Kind(PackKind::Reduction), Rdx(RI), RdxLen(RdxLen), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -130,7 +133,7 @@ private:
              llvm::BitVector Elements, llvm::BitVector Depended,
              llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
-        Kind(PackKind::GEP), GEPs(GEPs.begin(), GEPs.end()) {
+        Kind(PackKind::GEP), GEPs(GEPs.begin(), GEPs.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -141,7 +144,7 @@ private:
              llvm::ArrayRef<const GammaNode *> Gammas, llvm::BitVector Elements,
              llvm::BitVector Depended, llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
-        Kind(PackKind::Gamma), Gammas(Gammas.begin(), Gammas.end()) {
+        Kind(PackKind::Gamma), Gammas(Gammas.begin(), Gammas.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -152,7 +155,7 @@ private:
              llvm::ArrayRef<llvm::CmpInst *> Cmps, llvm::BitVector Elements,
              llvm::BitVector Depended, llvm::TargetTransformInfo *TTI)
       : VPCtx(VPCtx), Elements(Elements), Depended(Depended),
-        Kind(PackKind::Cmp), Cmps(Cmps.begin(), Cmps.end()) {
+        Kind(PackKind::Cmp), Cmps(Cmps.begin(), Cmps.end()), TTI(TTI) {
     computeOperandPacks();
     computeOrderedValues();
     computeCost(TTI);
@@ -233,6 +236,7 @@ public:
   const llvm::BitVector &getElements() const { return Elements; }
 
   llvm::ArrayRef<const OperandPack *> getOperandPacks() const {
+    //computeOperandPacks();
     return OperandPacks;
   }
 
@@ -248,6 +252,13 @@ public:
 
   void
   getPackedInstructions(llvm::SmallPtrSetImpl<llvm::Instruction *> &) const;
+
+  void recompute()
+  {
+    computeOperandPacks();
+    computeOrderedValues();
+    computeCost(TTI);
+  }
 };
 
 llvm::FixedVectorType *getVectorType(const OperandPack &OpndPack);

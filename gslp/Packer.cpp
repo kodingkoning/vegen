@@ -151,6 +151,30 @@ Packer::Packer(ArrayRef<const InstBinding *> Insts, Function &F,
 #endif
 }
 
+void Packer::updateFunction(Function *Func)
+{
+  F = Func;
+  MM = MatchManager(SupportedInsts, *F);
+  std::vector<Instruction *> Loads, Stores;
+  for (auto &I : instructions(Func)) {
+    if (auto *LI = dyn_cast<LoadInst>(&I)) {
+      if (LI->isSimple())
+        Loads.push_back(LI);
+    } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
+      if (SI->isSimple())
+        Stores.push_back(SI);
+    }
+  }
+
+  EquivalenceClasses<Instruction *> EquivalentAccesses;
+
+  buildAccessDAG(LoadDAG, Loads, EquivalentAccesses, getDataLayout(), SE, LI);
+  buildAccessDAG(StoreDAG, Stores, EquivalentAccesses, getDataLayout(), SE, LI);
+  LoadInfo = AccessLayoutInfo(LoadDAG);
+  StoreInfo = AccessLayoutInfo(StoreDAG);
+  VPCtx.updateFunction(Func);
+}
+
 AccessLayoutInfo::AccessLayoutInfo(const ConsecutiveAccessDAG &AccessDAG) {
   // First pass to find leaders
   DenseSet<Instruction *> Followers;
@@ -390,6 +414,7 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
   OPI.LoadProducers.clear();
 
   unsigned NumLanes = OP->size();
+  dbgs() << "NumLanes: " << NumLanes << '\n';
   BitVector Elements(VPCtx.getNumValues());
   BitVector Depended(VPCtx.getNumValues());
   OPI.Feasible = true;
@@ -535,7 +560,11 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
   for (auto *Inst : getInsts()) {
     ArrayRef<BoundOperation> LaneOps = Inst->getLaneOps();
     if (LaneOps.size() < NumLanes)
+    {
+
       continue;
+    }
+      
     if (LaneOps.size() != NumLanes)
       continue;
 
@@ -554,6 +583,7 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
         Lanes.push_back(nullptr);
       OPI.Producers.push_back(
           VPCtx.createVectorPack(Lanes, OPI.Elements, Depended, Inst, TTI));
+      dbgs() << Inst->getName() << '\n';
     }
   }
   OPI.Feasible = !OPI.Producers.empty();

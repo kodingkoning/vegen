@@ -51,6 +51,7 @@ public:
   float getCost(const OperandPack *OP) { return solve(OP).Cost; }
   float getCost(llvm::Value *);
   Solution solve(const OperandPack *OP);
+  void setPacker(Packer *P) { Pkr = P; }
 };
 
 #endif // HEURISTIC_H

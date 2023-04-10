@@ -6,6 +6,11 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/IR/Constants.h"
+#include <algorithm>
+#include <set>
+#include <cmath>
 
 using namespace llvm;
 
@@ -160,15 +165,21 @@ void runBottomUpFromOperand(
     const OperandPack *OP, Plan &P, Heuristic &H, bool OverrideExisting,
     std::function<void(const VectorPack *,
                        llvm::SmallVectorImpl<const OperandPack *> &)>
+                       
         GetExtraOperands) {
   // Plan Best = P;
+  dbgs() << "runBottomUpFromOperand\n";
   SmallVector<const OperandPack *> Worklist;
+  //std::deque<const OperandPack*> Worklist; 
   Worklist.push_back(OP);
   SmallPtrSet<const OperandPack *, 4> Visited;
+  DenseMap<const OperandPack*, int> OPLevel;
 
   while (!Worklist.empty()) {
     assert(P.verifyCost());
     auto *OP = Worklist.pop_back_val();
+    //auto *OP = Worklist.front();
+    //Worklist.erase(Worklist.begin()); // pop the first OperandPack
 
     if (!Visited.insert(OP).second)
       continue;
@@ -192,6 +203,16 @@ void runBottomUpFromOperand(
       P.add(VP);
       ArrayRef<const OperandPack *> Operands = VP->getOperandPacks();
       Worklist.append(Operands.begin(), Operands.end());
+      /*int OldLevel = OPLevel[OP];
+      for (auto* NewOP: Operands)
+      {
+        OPLevel[NewOP] = OldLevel + 1;
+      }*/
+      //for (auto *OP: Operands)
+      //{
+      //  Worklist.push_back(OP);
+      //}
+      //SmallVector<const OperandPack*> (Worklist.begin(), Worklist.end());
       if (GetExtraOperands)
         GetExtraOperands(VP, Worklist);
     }
@@ -362,6 +383,229 @@ static void findLoopFreeReductions(SmallVectorImpl<const VectorPack *> &Seeds,
   }
 }
 
+static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
+{
+  // TODO: compute the cost of making it symmetric
+  dbgs() << "===make symmetric dag===\n";
+  constexpr int MaxLevel = 3;
+
+  int Level = 0;
+  std::vector<Value*> Worklist;
+  std::vector<Instruction*> SExtList;
+  for (auto *V: *OP)
+  {
+    Worklist.push_back(V);
+  }
+  auto &Context = OP->front()->getContext();
+  auto &FstInst = dyn_cast<Instruction>(OP->front())->getParent()->front();
+  DenseMap<Value*, Instruction*> OperandParent;
+  while (Level <= MaxLevel)
+  {
+    auto FstType = Worklist.front()->getType();
+    bool AllSame = true;
+    bool HasLoad = false;
+    bool HasConstant = false;
+    bool HasSExt = false;
+    llvm::Type* DestTy;
+    dbgs() << "Level " << Level << '\n' << "Worklist: \n";
+    for (auto *V: Worklist)
+    {
+      dbgs() << *V << "\n";
+    }
+    for (auto* V: Worklist)
+    {
+      if (V->getType() != FstType)
+      {
+        AllSame = false;
+      }
+      if (isa<LoadInst>(V))
+      {
+        HasLoad = true;
+      }
+      if (isa<Constant>(V))
+      {
+        HasConstant = true;
+      }
+      if (auto *S = dyn_cast<SExtInst>(V))
+      {
+        HasSExt = true;
+        DestTy = S->getDestTy();
+      }
+    }
+    if (AllSame && !HasConstant)
+    {
+      dbgs() << "===Allsame===\n";
+      ++Level;
+      std::vector<Value*> NewWorklist;
+      for (auto *V: Worklist)
+      {
+        if (auto *I = dyn_cast<Instruction>(V))
+        {
+          for (Use& OP: I->operands())
+          {
+            NewWorklist.push_back(OP.get());
+            OperandParent[OP.get()] = I;
+          }
+        }    
+      }
+      Worklist = NewWorklist;
+    }
+    else if (HasSExt)
+    {
+      dbgs() << "===HasSExt===\n";
+      std::vector<Value*> NewWorklist;
+      for (auto *V: Worklist)
+      {
+        if (!isa<SExtInst>(V))
+        {
+          auto *InsertPoint = dyn_cast<Instruction>(OperandParent[V]);
+          auto *NewInst = new SExtInst(nullptr, DestTy, "", &FstInst);
+          V->replaceAllUsesWith(NewInst);
+          NewWorklist.push_back(V);
+          SExtList.push_back(NewInst);
+        }
+        else
+        {
+          if (auto *I = dyn_cast<SExtInst>(V))
+          {
+            NewWorklist.push_back(I->getOperand(0));
+          }
+        }
+      }
+      Worklist = NewWorklist;
+    }
+    else
+    {
+      dbgs() << "===Make symmetric===\n";
+      ++Level;
+      auto Compare = [](APInt i, APInt j) {
+            return i.slt(j);
+      };
+      if (HasLoad && HasConstant)
+      {
+        std::set<APInt, decltype(Compare)> AIndices(Compare);
+        std::set<APInt, decltype(Compare)> BIndices(Compare);
+        //std::vector<ConstantExpr*> AGEPs;
+        //std::vector<ConstantExpr*> BGEPs;
+        DenseMap<APInt, LoadInst*> ALoads;
+        DenseMap<APInt, LoadInst*> BLoads;
+        std::vector<int> ConstantIndices;
+        std::vector<std::pair<APInt, Constant*>> ConstantReplaced;
+        Value* ArrA = nullptr;
+        Value* ArrB = nullptr;
+        ConstantExpr* GEPA = nullptr;
+        ConstantExpr* GEPB = nullptr;
+        //LoadInst* LoadA = nullptr;
+        //LoadInst* LoadB = nullptr;
+        //GetElementPtrInst* GEPPrototype = nullptr;
+        //ConstantExpr* GEPPrototype = nullptr;
+        //LoadInst* LoadPrototype = nullptr;
+        for (int i = 0; i < Worklist.size(); ++i)
+        {
+          auto *V = Worklist[i];
+          dbgs() << "Looping V: " << *V << '\n';
+          if (auto *L = dyn_cast<LoadInst>(V))
+          {
+            dbgs() << *L->getPointerOperand() << '\n';
+            //dbgs() << *L->getType() << '\n';
+            if (auto *GEP = dyn_cast<ConstantExpr>(L->getPointerOperand()))
+            {
+              dbgs() << "print GEP operands\n";
+              for (Use& OP: GEP->operands())
+              {
+                dbgs() << *OP.get() << '\n';
+              }
+              //auto *Arr = GEP->getPointerOperand();
+              auto *Arr = GEP->getOperand(0);
+              if (!ArrA)
+              {
+                ArrA = Arr;
+                GEPA = GEP;
+                //LoadA = L;
+              }
+              else if (ArrA != Arr && !ArrB)
+              {
+                ArrB = Arr;
+                GEPB = GEP;
+                //LoadB = L;
+              }
+              //auto Index = dyn_cast<ConstantInt>((*(GEP->indices().begin() + 1)).get())->getSExtValue();
+              auto Index = GEP->getOperand(2)->getUniqueInteger();
+              if (ArrA == Arr)
+              {
+                AIndices.insert(Index);
+                //AGEPs.push_back(GEP);
+                //ALoads.push_back(L);
+                ALoads[Index] = L;
+              }
+              else
+              {
+                BIndices.insert(Index);
+                BLoads[Index] = L;
+                //BGEPs.push_back(GEP);
+                //BLoads.push_back(L);
+              }
+            }
+          }
+          if (auto *C = dyn_cast<Constant>(V))
+          {
+            ConstantIndices.push_back(i);
+          }
+        }
+        dbgs() << "Print AIndices and BIndices\n";
+        for (auto &A: AIndices)
+        {
+          dbgs() << A << '\n';
+        }
+        for (auto &B: BIndices)
+        {
+          dbgs() << B << '\n';
+        }
+        bool Shorter = AIndices.size() < BIndices.size();
+        int DiffSize = Shorter ? BIndices.size() - AIndices.size(): AIndices.size() - BIndices.size();
+        ConstantExpr* GEPPrototype = Shorter ? GEPA : GEPB;
+        std::vector<Constant*> GEPOperands;
+        for (int i = 0; i < GEPPrototype->getNumOperands(); ++i)
+        {
+          GEPOperands.push_back(GEPPrototype->getOperand(i));
+        }
+        //LoadInst* LoadPrototype = Shorter ? LoadA: LoadB;
+        std::vector<APInt> Diff(DiffSize);
+        //dbgs() << "Function after inserting SEXT\n";
+        //dbgs() << *LoadPrototype->getFunction() << '\n';
+        if (ConstantIndices.size() == DiffSize)
+        {
+          std::set_difference(AIndices.begin(), AIndices.end(),
+          BIndices.begin(), BIndices.end(), Diff.begin(), Compare);
+          for (int i = 0; i < DiffSize; ++i)
+          {
+            if (auto *C = dyn_cast<Constant>(Worklist[ConstantIndices[i]]))
+            {
+              ConstantReplaced.emplace_back(Diff[i], C);
+            }
+            auto NewOperands = GEPOperands;
+            NewOperands[2] = ConstantInt::get(Context, Diff[i]);
+            //GEPOperands[2] = ConstantInt::get(Context, Diff[i]);
+            auto *NewGEPExpr = GEPPrototype->getWithOperands(NewOperands);
+            //int Idx = Diff[i].getSExtValue();
+            auto *LoadPrototype = Shorter ? BLoads[Diff[i]] : ALoads[Diff[i]];
+            dbgs() << "i " << i << "Index " << Diff[i] << " " << *LoadPrototype << '\n';
+            auto *NewLoadInst = dyn_cast<LoadInst>(LoadPrototype->clone());
+            NewLoadInst->setOperand(0, NewGEPExpr);
+            //NewLoadInst->insertBefore(LoadPrototype);
+            NewLoadInst->insertBefore(SExtList[i]);
+            SExtList[i]->setOperand(0, NewLoadInst);
+            Worklist[ConstantIndices[i]]->replaceAllUsesWith(NewLoadInst);
+          }
+        }
+        Pkr->ConstantReplaceds[Shorter ? ALoads.begin()->second : BLoads.begin()->second] = ConstantReplaced;
+        dbgs() << *(ALoads.begin()->second->getFunction()) << '\n';
+        return;
+      }
+    }
+  }
+}
+
 static void improvePlan(Packer *Pkr, Plan &P,
                         ArrayRef<const OperandPack *> SeedOperands,
                         CandidatePackSet *Candidates,
@@ -376,12 +620,6 @@ static void improvePlan(Packer *Pkr, Plan &P,
       for (auto *VP : getSeedMemPacks(Pkr, SI, VL, BlocksToIgnore)) {
         Seeds.push_back(VP);
       }
-  }
-
-  dbgs() << "===Store Seeds===\n";
-  for (auto *VP: Seeds)
-  {
-    dbgs() << *VP << '\n';
   }
 
   AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
@@ -423,19 +661,98 @@ static void improvePlan(Packer *Pkr, Plan &P,
   if (Candidates)
     Seeds.append(Candidates->Packs.begin(), Candidates->Packs.end());
 
-  dbgs() << "===Reduction Seeds added===\n";
+  /*dbgs() << "===Reduction Seeds added===\n";
+  for (auto *VP: Seeds)
+  {
+    dbgs() << *VP << '\n';
+  }*/
+  dbgs() << "===Store Seeds===\n";
   for (auto *VP: Seeds)
   {
     dbgs() << *VP << '\n';
   }
 
+  // try to make dag symmetric
+  // if (!Seeds.empty())
+  // {
+  //   auto *VP = Seeds.front();
+  //   auto *OP = VP->getOperandPacks().front();
+  //   makeSymmetricDAG(OP, Pkr);
+
+  //   auto *F = Pkr->getFunction();
+  //   ArrayRef<const InstBinding *> SupportedIntrinsics = Pkr->getSupportedIntrinsics();
+  //   auto *AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
+  //   auto *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+  //   auto *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  //   auto *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+  //   auto *DI = &getAnalysis<DependenceAnalysisWrapperPass>().getDI();
+  //   auto *LVI = &getAnalysis<LazyValueInfoWrapperPass>().getLVI();
+  //   auto *TTI = &getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
+  //   auto *BFI = &getAnalysis<BlockFrequencyInfoWrapperPass>().getBFI();
+  //   PostDominatorTree PDT(F);
+  //   Packer Pkr(SupportedIntrinsics, F, AA, LI, SE, DT, &PDT, DI, LVI, TTI, BFI);
+
+
+  //   //Pkr->updateFunction(Pkr->getFunction());
+  //   Seeds.clear();
+  //   for (Instruction &I : instructions(Pkr->getFunction())) {
+  //     auto *SI = dyn_cast<StoreInst>(&I);
+  //     // Only pack scalar store
+  //     if (!SI || SI->getValueOperand()->getType()->isVectorTy())
+  //       continue;
+  //     for (unsigned VL : {2, 4, 8 /*, 16, 32, 64*/})
+  //       for (auto *VP : getSeedMemPacks(Pkr, SI, VL, BlocksToIgnore)) {
+  //         Seeds.push_back(VP);
+  //       }
+  //   }
+  //   AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
+  //   stable_sort(Seeds, [&](const VectorPack *VP1, const VectorPack *VP2) -> bool {
+  //     auto *SI1 = cast<StoreInst>(VP1->getOrderedValues().front());
+  //     auto *SI2 = cast<StoreInst>(VP2->getOrderedValues().front());
+  //     unsigned Id1 = LayoutInfo.get(SI1).Id;
+  //     unsigned Id2 = LayoutInfo.get(SI2).Id;
+  //     int NumElems1 = -int(VP1->numElements());
+  //     int NumElems2 = -int(VP2->numElements());
+  //     return std::tie(Id1, NumElems1) < std::tie(Id2, NumElems2);
+  //   });
+
+  //   P = Plan(Pkr);
+  // }
+  // dbgs() << "===Store Seeds after update===\n";
+  // for (auto *VP: Seeds)
+  // {
+  //   dbgs() << *VP << '\n';
+  // }
 
   Heuristic H(Pkr, Candidates);
 
-  auto Improve = [&](Plan P2, ArrayRef<const OperandPack *> OPs) -> bool {
+  auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs) -> bool {
+    dbgs() << "Ops size is " << OPs.size() << " and Plan P cost is " << P.cost() << '\n';
     for (auto *OP : OPs) {
-      if (!H.solve(OP).Packs.empty())
+      dbgs() << "===Improving===\n";
+      // try to make dag from OP to be symmetric
+      makeSymmetricDAG(OP, Pkr);
+      Pkr->updateFunction(Pkr->getFunction());
+      P2 = Plan(Pkr);
+      //H.setPacker(Pkr);
+      auto SolvedPacks = H.solve(OP).Packs;
+      //if (!H.solve(OP).Packs.empty())
+      if (!SolvedPacks.empty())
+      {
+        dbgs() << "solved packs not empty\n";
+        for (auto *VP: SolvedPacks)
+        {
+          dbgs() << *VP << '\n';
+          //VP->recompute();
+        }
         runBottomUpFromOperand(OP, P2, H);
+        dbgs() << "Plan P2 after run bottom up from operand\n";
+        for (auto *VP: P2)
+        {
+          dbgs() << *VP << '\n';
+        }
+      }
+      dbgs() << "cost of Plan P2 is " << P2.cost() << '\n';
     }
     if (P2.cost() < P.cost()) {
       P = P2;

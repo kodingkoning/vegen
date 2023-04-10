@@ -4,6 +4,7 @@
 #include "VectorPack.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/CommandLine.h"
+#include <queue>
 
 using namespace llvm;
 
@@ -47,6 +48,11 @@ const OperandPack *transpose(const VectorPackContext *VPCtx,
 }
 
 Heuristic::Solution Heuristic::solve(const OperandPack *OP) {
+  //dbgs() << "===OP to be solved===\n" << *OP << '\n';
+  /*for (auto* V: *OP)
+  {
+    dbgs() << *V << '\n';
+  }*/
   auto It = Solutions.find(OP);
   if (It != Solutions.end())
     return It->second;
@@ -65,7 +71,7 @@ Heuristic::Solution Heuristic::solve(const OperandPack *OP) {
   // The baseline solution is building the vector by implicit insertion
   Solution Sol(Cost);
   LLVM_DEBUG(dbgs() << "Scalar cost of " << *OP << " = " << Cost << '\n');
-
+  dbgs() << "Scalar cost of " << *OP << " = " << Cost << '\n';
   if (Cost == 0) {
     Solutions[OP] = Sol;
     return Sol;
@@ -82,9 +88,19 @@ Heuristic::Solution Heuristic::solve(const OperandPack *OP) {
   const OperandPack *Deduped = VPCtx->dedup(OP);
   float ExtraCost = Deduped != OP ? C_Shuffle : 0;
   auto OPI = Pkr->getProducerInfo(Deduped);
+  dbgs() << "===Producer Info===\n";
+  // TODO: Rewrite the solve
   for (auto *VP : OPI.getProducers()) {
+    dbgs() << "===OperandPack for VP===\n";
+    dbgs() << "VP: " << *VP << '\n';
+    for (auto *OP : VP->getOperandPacks()) {
+      dbgs() << *OP << '\n';
+    }
     Sol.update(Solution(getCost(VP) + ExtraCost, VP));
+
     LLVM_DEBUG(dbgs() << "Cost of " << *VP << ": " << getCost(VP) << '\n');
+    //dbgs() << "Cost of " << *VP << ": " << getCost(VP) << '\n';
+    //dbgs() << "Producing Cost of " << *VP << ": " << VP->getProducingCost() << '\n';
   }
 
   if (AllowTranspose) {

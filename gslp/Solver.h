@@ -41,4 +41,6 @@ bool findDepCycle(
     llvm::ArrayRef<std::pair<llvm::Instruction *, llvm::Instruction *>>
         ExtraDeps = llvm::None);
 
+//void makeDAGSymmetric(const OperandPack* OP, Packer* Pkr);
+
 #endif
