@@ -145,7 +145,7 @@ public:
   ControlDependenceAnalysis &getCDA() { return CDA; }
 
   // newly add
-  std::vector<const InstBinding *>& getSupportedInsts { return SupportedInsts; }
+  std::vector<const InstBinding *>& getSupportedInsts() { return SupportedInsts; }
 
   llvm::ArrayRef<Operation::Match> findMatches(const Operation *, llvm::Value *);
 
