@@ -147,12 +147,9 @@ public:
   llvm::LazyValueInfo &getLVI() const { return *LVI; }
   ControlDependenceAnalysis &getCDA() { return CDA; }
 
-<<<<<<< HEAD
-=======
   // newly add
   std::vector<const InstBinding *>& getSupportedInsts() { return SupportedInsts; }
 
->>>>>>> refs/remotes/origin/main
   llvm::ArrayRef<Operation::Match> findMatches(const Operation *, llvm::Value *);
 
   const llvm::DataLayout *getDataLayout() const {
