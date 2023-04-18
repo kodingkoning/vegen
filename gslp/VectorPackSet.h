@@ -35,7 +35,7 @@ class VectorPackSet {
 
   llvm::BitVector PackedValues;
   llvm::DenseMap<llvm::Value *, const VectorPack *> ValueToPackMap;
-
+public:
   void add(const VectorPack *VP);
 
 public:

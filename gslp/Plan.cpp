@@ -22,6 +22,17 @@ Plan::Plan(Packer *Pkr) : Pkr(Pkr), Cost(0) {
   }
 }
 
+void Plan::updatePacker(Packer *Pkr)
+{
+  Cost = 0;
+  NumScalarUses.clear();
+  for (auto &I : instructions(Pkr->getFunction())) {
+    NumScalarUses[&I] = I.getNumUses();
+    if (isAlive(&I))
+      Cost += Pkr->getScalarCost(&I);
+  }
+}
+
 void Plan::incScalarUses(Instruction *I) {
   auto It = InstToPackMap.find(I);
   bool NeedToExtract = !NumScalarUses[I] && It != InstToPackMap.end();

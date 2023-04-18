@@ -112,6 +112,9 @@ class Packer {
   llvm::TargetTransformInfo *TTI;
   llvm::BlockFrequencyInfo *BFI;
 
+  // newly added
+  llvm::AliasAnalysis *AA;
+
 public:
   Packer(llvm::ArrayRef<const InstBinding *> SupportedInsts, llvm::Function &F,
          llvm::AliasAnalysis *AA, llvm::LoopInfo *LI, llvm::ScalarEvolution *SE,
@@ -143,9 +146,6 @@ public:
   VLoopInfo &getVLoopInfo() { return VLI; }
   llvm::LazyValueInfo &getLVI() const { return *LVI; }
   ControlDependenceAnalysis &getCDA() { return CDA; }
-
-  // newly add
-  std::vector<const InstBinding *>& getSupportedInsts { return SupportedInsts; }
 
   llvm::ArrayRef<Operation::Match> findMatches(const Operation *, llvm::Value *);
 
@@ -194,6 +194,7 @@ public:
   // TODO: Make this private and add getter and setter
   llvm::DenseMap<llvm::Value*, std::vector<std::pair<llvm::APInt, llvm::Constant*>>> ConstantReplaceds;
   void updateFunction(llvm::Function *Func);
+  void addModifiedInsts(std::vector<llvm::Instruction*> &Insts);
 };
 
 // Check if `I` is independent from things in `Elements`, which depends on

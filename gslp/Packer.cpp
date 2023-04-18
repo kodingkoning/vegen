@@ -69,7 +69,7 @@ Packer::Packer(ArrayRef<const InstBinding *> Insts, Function &F,
       TopVL(*LI, *DT, &VPCtx, DA, CDA, VLI),
 
       BO(&F), MM(Insts, F), SE(SE), DT(DT), PDT(PDT), LI(LI),
-      SupportedInsts(Insts.vec()), LVI(LVI), TTI(TTI), BFI(BFI) {
+      SupportedInsts(Insts.vec()), LVI(LVI), TTI(TTI), BFI(BFI), AA(AA) {
 
   for (auto &BB : F) {
     BlockConditions[&BB] = CDA.getConditionForBlock(&BB);
@@ -173,7 +173,18 @@ void Packer::updateFunction(Function *Func)
   LoadInfo = AccessLayoutInfo(LoadDAG);
   StoreInfo = AccessLayoutInfo(StoreDAG);
   VPCtx.updateFunction(Func);
+  DA = GlobalDependenceAnalysis(*AA, *SE, *LI, *LVI, Func, &VPCtx, false);
+  TopVL.updateFunction(*DT, *LI, CDA);
 }
+
+void Packer::addModifiedInsts(std::vector<llvm::Instruction*> &Insts)
+{
+  for (auto *I: Insts)
+  {
+    DA.addInstruction(I);
+  }
+}
+
 
 AccessLayoutInfo::AccessLayoutInfo(const ConsecutiveAccessDAG &AccessDAG) {
   // First pass to find leaders
@@ -414,7 +425,8 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
   OPI.LoadProducers.clear();
 
   unsigned NumLanes = OP->size();
-  dbgs() << "NumLanes: " << NumLanes << '\n';
+  dbgs() << "running getProducerInfo\n" << "NumLanes: " << NumLanes << '\n';
+  dbgs() << *OP << '\n';
   BitVector Elements(VPCtx.getNumValues());
   BitVector Depended(VPCtx.getNumValues());
   OPI.Feasible = true;
@@ -453,7 +465,11 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
   OPI.Elements = Elements;
 
   if (!OPI.Feasible || OPI.Elements.count() < 2)
+  {
+    dbgs() << "Not Feasible!!!\n";
     return OPI;
+  }
+    
 
   if (AllLoads) {
     findExtendingLoadPacks(*OP, this, OPI.LoadProducers);

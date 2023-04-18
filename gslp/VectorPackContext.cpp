@@ -39,19 +39,19 @@ VectorPackContext::VectorPackContext(Function *F)
 
 void VectorPackContext::addInstruction(Instruction *I) {
   unsigned id = ScalarToIdMap.size();
-  //if (!ScalarToIdMap.count(I))
-  //{
+  if (!ScalarToIdMap.count(I))
+  {
     ScalarToIdMap[I] = id;
     Scalars.push_back(I);
-  //}
+  }
 }
 
 void VectorPackContext::updateFunction(Function *Func)
 {
   dbgs() << "update vector pack context\n";
   F = Func;
-  ScalarToIdMap.clear();
-  Scalars.clear();
+  //ScalarToIdMap.clear();
+  //Scalars.clear();
   for (Instruction &I : instructions(F))
     addInstruction(&I);
   NumValues = Scalars.size() * 5;

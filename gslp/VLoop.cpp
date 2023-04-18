@@ -110,6 +110,34 @@ VLoop::VLoop(LoopInfo &LI, Loop *L, VectorPackContext *VPCtx,
   setSubtract(Depended, Insts);
 }
 
+void VLoop::updateFunction(llvm::DominatorTree &DT, llvm::LoopInfo &LI, ControlDependenceAnalysis &CDA) {
+  SubLoops.clear();
+  TopLevelInsts.clear();
+  InstConds.clear();
+  for (auto *L : LI.getTopLevelLoops()) {
+    auto *SubVL = new VLoop(LI, L, VPCtx, DA, CDA, VLI);
+    SubVL->Parent = this;
+    SubLoops.emplace_back(SubVL);
+  }
+
+  for (auto &BB : *VPCtx->getFunction()) {
+    // Ignore dead basic blocks
+    if (!DT.isReachableFromEntry(&BB))
+      continue;
+
+    if (!LI.getLoopFor(&BB)) {
+      auto *C = CDA.getConditionForBlock(&BB);
+      for (auto &I : BB) {
+        TopLevelInsts.push_back(&I);
+        InstConds[&I] = C;
+        if (auto *PN = dyn_cast<PHINode>(&I))
+          getIncomingPhiConditions(GatedPhis[PN], PN, CDA);
+        VLI.mapInstToLoop(&I, this);
+      }
+    }
+  }
+}
+
 llvm::Optional<MuNode> VLoop::getMu(PHINode *PN) const {
   auto It = Mus.find(PN);
   if (It != Mus.end())

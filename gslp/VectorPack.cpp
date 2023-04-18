@@ -198,6 +198,7 @@ Value *VectorPack::emitVectorStore(ArrayRef<Value *> Operands, Value *Mask,
                                    std::function<Value *(Value *)> GetScalar,
                                    IntrinsicBuilder &Builder) const {
   // Emit the vector store
+  dbgs() << "emit vector store\n";
   Instruction *VecStore;
   if (IsGatherScatter) {
     auto *Ptrs = Operands[0];

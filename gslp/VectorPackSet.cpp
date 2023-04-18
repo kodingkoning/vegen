@@ -303,6 +303,7 @@ void VectorPackSet::add(const VectorPack *VP) {
 bool VectorPackSet::isCompatibleWith(const VectorPack &VP) const {
   // Abort if one of the value we want to produce is produced by another pack
   if (PackedValues.anyCommon(VP.getElements())) {
+    dbgs() << "failed with value from another pack\n";
     return false;
   }
 
@@ -616,6 +617,7 @@ static void fixDefUseDominance(Function *F, DominatorTree &DT) {
   }
 
   PromoteMemToReg(Allocas, DT);
+  dbgs() << "before verifyfunction\n" << *F << '\n';
   assert(!verifyFunction(*F, &errs()));
 }
 
@@ -682,7 +684,7 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
       }
     }
   }
-
+  std::vector<std::pair<Value*, Instruction*>> LoadAndShuffle;
   // Now generate code according to the schedule
   for (auto &InstOrLoop : Schedule) {
     // Emit the sub-loop recursively
@@ -701,8 +703,8 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
 
     auto *Cond = VL.getInstCond(I);
     auto *VP = ValueToPackMap.lookup(I);
-    //if (VP)
-    //  errs() << "Value To Pack" << *VP << '\n';
+    if (VP)
+      dbgs() << "Value To Pack" << *VP << '\n';
     // I is not packed
     if (!VP || shouldSkip(VP)) {
       // Just drop these intrinsics
@@ -924,19 +926,54 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
         }
         if (!ConstantReplaced.empty())
         {
+          //dbgs() << "first load\n" << *Vals.front() << '\n';
+          auto *FstLoad = dyn_cast<LoadInst>(Vals.front());
+          //auto *ElmType = dyn_cast<ArrayType>(FstLoad->getPointerOperandType())->getElementType();
+          auto *ElmType = FstLoad->getType();
+          dbgs() << "element type\n" << *ElmType << '\n';
           std::vector<Constant*> Constants;
           std::vector<int> ShuffleIdxes;
-          for (auto& p: ConstantReplaced)
+          int PrevIdx = 0;
+          //for (auto& p: ConstantReplaced)
+          for (int i = 0; i < ConstantReplaced.size(); ++i)
           {
-            Constants.push_back(p.second);
-            ShuffleIdxes.push_back(p.first.getSExtValue());
+            auto &p = ConstantReplaced[i];
+            if (auto *C = dyn_cast<ConstantInt>(p.second))
+            {
+              Constants.push_back(ConstantInt::get(dyn_cast<IntegerType>(ElmType), C->getValue().getSExtValue(), true));
+            }
+            else if (auto *C = dyn_cast<ConstantFP>(p.second))
+            {
+              Constants.push_back(ConstantFP::get(ElmType, C->getValue().convertToDouble()));
+            }
+            //ShuffleIdxes.push_back(p.first.getSExtValue());
+            auto Idx = p.first.getSExtValue();
+            for (int j = PrevIdx; j < Idx; ++j)
+            {
+              ShuffleIdxes.push_back(j);
+            }
+            ShuffleIdxes.push_back(Vals.size() + i);
+            PrevIdx = Idx + 1;
+          }
+          for (int i = PrevIdx; i < Vals.size(); ++i)
+          {
+            ShuffleIdxes.push_back(i);
+          }
+          auto *Undef = UndefValue::get(Constants.front()->getType());
+          for (int i = 0; i < Vals.size() - ConstantReplaced.size(); ++i)
+          {
+            Constants.push_back(Undef);
           }
           auto *ConstVec = ConstantVector::get(Constants);
           auto *NewInst = new ShuffleVectorInst(VecInst, ConstVec, ShuffleIdxes);
+          //VecInst->replaceAllUsesWith(NewInst);
+          //NewInst->setOperand(0, VecInst);
+          LoadAndShuffle.emplace_back(VecInst, NewInst);
           if (auto *I = dyn_cast<Instruction>(VecInst))
           {
             NewInst->insertAfter(I);
           }
+          dbgs() << *F << '\n';
         }
       }
 
@@ -978,6 +1015,15 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
 
     // Map the pack to its materialized value
     MaterializedPacks[VP] = VecInst;
+  }
+
+  dbgs() << "Function before replacing laod with shuffle\n" << *F << '\n';
+  // replace all uses of load to be the result of shuffle
+  for (auto &p: LoadAndShuffle)
+  {
+    dbgs() << "Load and shuffle\n" << *p.first << '\n' << *p.second << '\n';
+    p.first->replaceAllUsesWith(p.second);
+    p.second->setOperand(0, p.first);
   }
 
   if (!VL.isLoop())

@@ -87,6 +87,8 @@ public:
       return It->second.VP;
     return nullptr;
   }
+
+  void updatePacker(Packer *Pkr);
 };
 
 #endif // end PLAN_H

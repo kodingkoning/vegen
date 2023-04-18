@@ -49,7 +49,10 @@ public:
 
   VLoop *getLoopForInst(llvm::Instruction *I) const {
     assert(InstToVLoopMap.count(I));
-    return InstToVLoopMap.lookup(I);
+    //if (InstToVLoopMap.count(I))
+      return InstToVLoopMap.lookup(I);
+    //else
+    //  return nullptr;
   }
 
   auto getCoIteratingLoops(VLoop *VL) {
@@ -180,6 +183,8 @@ public:
 
   bool haveIdenticalTripCounts(VLoop *, llvm::ScalarEvolution &);
   VLoop *getParent() const { return Parent; }
+
+  void updateFunction(llvm::DominatorTree &DT, llvm::LoopInfo &LI, ControlDependenceAnalysis &CDA);
 };
 
 bool haveIdenticalTripCounts(const llvm::Loop *, const llvm::Loop *,

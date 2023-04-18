@@ -302,6 +302,8 @@ static bool haveIdenticalTripCountsAux(Value *A, Value *B, Packer *Pkr) {
   auto *I2 = cast<Instruction>(B);
   auto *VL1 = Pkr->getVLoopFor(I1);
   auto *VL2 = Pkr->getVLoopFor(I2);
+  if (!VL1 || !VL2)
+    return true;
   if (VL1 == VL2)
     return true;
   return VL1->haveIdenticalTripCounts(VL2, Pkr->getSE());
@@ -383,6 +385,37 @@ static void findLoopFreeReductions(SmallVectorImpl<const VectorPack *> &Seeds,
   }
 }
 
+static Value* findLoadArr(Instruction *I)
+{
+  dbgs() << "findLoadArr: " << *I << '\n';
+  if (auto *L = dyn_cast<LoadInst>(I))
+  {
+    if (auto *GEP = dyn_cast<ConstantExpr>(L->getPointerOperand()))
+    {
+      return GEP->getOperand(0);
+    }
+    else
+      return nullptr;
+  }
+  Value *V = nullptr;
+  for (auto &Use: I->operands())
+  {
+    if (auto *IChild = dyn_cast<Instruction>(Use.get()))
+    {
+      Value *TChild = findLoadArr(IChild);
+      if (!V)
+      {
+        V = TChild;
+      }
+      else if (!TChild)
+      {
+        return nullptr;
+      }
+    }
+  }
+  return V;
+}
+
 static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
 {
   // TODO: compute the cost of making it symmetric
@@ -391,14 +424,17 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
 
   int Level = 0;
   std::vector<Value*> Worklist;
-  std::vector<Instruction*> SExtList;
+  std::vector<Instruction*> Parent;
+  std::vector<int> OperandIdx;
+  //std::vector<Instruction*> SExtList;
+  std::vector<Instruction*> ModifiedInsts;
   for (auto *V: *OP)
   {
     Worklist.push_back(V);
   }
   auto &Context = OP->front()->getContext();
   auto &FstInst = dyn_cast<Instruction>(OP->front())->getParent()->front();
-  DenseMap<Value*, Instruction*> OperandParent;
+  //DenseMap<Value*, Instruction*> OperandParent;
   while (Level <= MaxLevel)
   {
     auto FstType = Worklist.front()->getType();
@@ -437,42 +473,89 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       dbgs() << "===Allsame===\n";
       ++Level;
       std::vector<Value*> NewWorklist;
-      for (auto *V: Worklist)
+      std::vector<Instruction*> NewParent;
+      std::vector<int> NewOperandIdx;
+      //for (auto *V: Worklist)
+      for (int j = 0; j < Worklist.size(); ++j)
       {
+        auto *V = Worklist[j];
         if (auto *I = dyn_cast<Instruction>(V))
         {
-          for (Use& OP: I->operands())
+          // swap the order of operands of binary operator if the arrays loaded are unmatched
+          if (auto *B = dyn_cast<BinaryOperator>(I))
           {
-            NewWorklist.push_back(OP.get());
-            OperandParent[OP.get()] = I;
+            int NonConst = -1;
+            if (isa<Constant>(B->getOperand(0)))
+            {
+              NonConst = 1;
+            }
+            else if (isa<Constant>(B->getOperand(1)))
+            {
+              NonConst = 0;
+            }
+            if (NonConst >= 0)
+            {
+              auto *P = Parent[j];
+              auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
+              auto *I2 = dyn_cast<Instruction>(dyn_cast<Instruction>(P->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+              dbgs() << "before findloadarr" << *I2 << '\n' << *I1 << '\n';
+              if (I2 && findLoadArr(I2) != findLoadArr(I1))
+              {
+                auto *Op0 = I->getOperand(0);
+                auto *Op1 = I->getOperand(1);
+                I->setOperand(1, Op0);
+                I->setOperand(0, Op1);
+              }
+            }
+          }
+          for (int i = 0; i < I->getNumOperands(); ++i)
+          {
+            NewWorklist.push_back(I->getOperand(i));
+            NewParent.push_back(I);
+            NewOperandIdx.push_back(i);
           }
         }    
       }
       Worklist = NewWorklist;
+      Parent = NewParent;
+      OperandIdx = NewOperandIdx;
     }
     else if (HasSExt)
     {
       dbgs() << "===HasSExt===\n";
       std::vector<Value*> NewWorklist;
-      for (auto *V: Worklist)
+      std::vector<Instruction*> NewParent;
+      std::vector<int> NewOperandIdx;
+      //for (auto *V: Worklist)
+      for (int i = 0; i < Worklist.size(); ++i)
       {
+        auto *V = Worklist[i];        
         if (!isa<SExtInst>(V))
         {
-          auto *InsertPoint = dyn_cast<Instruction>(OperandParent[V]);
-          auto *NewInst = new SExtInst(nullptr, DestTy, "", &FstInst);
-          V->replaceAllUsesWith(NewInst);
+          auto *InsertPoint = dyn_cast<Instruction>(Parent[i]);
+          auto *NewInst = new SExtInst(nullptr, DestTy, "", InsertPoint);
+          //V->replaceAllUsesWith(NewInst);
+          Parent[i]->setOperand(OperandIdx[i], NewInst);
           NewWorklist.push_back(V);
-          SExtList.push_back(NewInst);
+          NewParent.push_back(NewInst);
+          NewOperandIdx.push_back(0);
+          //SExtList.push_back(NewInst);
+          ModifiedInsts.push_back(Parent[i]);
+          ModifiedInsts.push_back(NewInst);
         }
         else
         {
           if (auto *I = dyn_cast<SExtInst>(V))
           {
             NewWorklist.push_back(I->getOperand(0));
+            NewParent.push_back(I);
+            NewOperandIdx.push_back(0);
           }
         }
       }
       Worklist = NewWorklist;
+      Parent = NewParent;
+      OperandIdx = NewOperandIdx;
     }
     else
     {
@@ -485,8 +568,6 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       {
         std::set<APInt, decltype(Compare)> AIndices(Compare);
         std::set<APInt, decltype(Compare)> BIndices(Compare);
-        //std::vector<ConstantExpr*> AGEPs;
-        //std::vector<ConstantExpr*> BGEPs;
         DenseMap<APInt, LoadInst*> ALoads;
         DenseMap<APInt, LoadInst*> BLoads;
         std::vector<int> ConstantIndices;
@@ -495,11 +576,6 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
         Value* ArrB = nullptr;
         ConstantExpr* GEPA = nullptr;
         ConstantExpr* GEPB = nullptr;
-        //LoadInst* LoadA = nullptr;
-        //LoadInst* LoadB = nullptr;
-        //GetElementPtrInst* GEPPrototype = nullptr;
-        //ConstantExpr* GEPPrototype = nullptr;
-        //LoadInst* LoadPrototype = nullptr;
         for (int i = 0; i < Worklist.size(); ++i)
         {
           auto *V = Worklist[i];
@@ -521,29 +597,22 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
               {
                 ArrA = Arr;
                 GEPA = GEP;
-                //LoadA = L;
               }
               else if (ArrA != Arr && !ArrB)
               {
                 ArrB = Arr;
                 GEPB = GEP;
-                //LoadB = L;
               }
-              //auto Index = dyn_cast<ConstantInt>((*(GEP->indices().begin() + 1)).get())->getSExtValue();
               auto Index = GEP->getOperand(2)->getUniqueInteger();
               if (ArrA == Arr)
               {
                 AIndices.insert(Index);
-                //AGEPs.push_back(GEP);
-                //ALoads.push_back(L);
                 ALoads[Index] = L;
               }
               else
               {
                 BIndices.insert(Index);
                 BLoads[Index] = L;
-                //BGEPs.push_back(GEP);
-                //BLoads.push_back(L);
               }
             }
           }
@@ -593,13 +662,23 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             auto *NewLoadInst = dyn_cast<LoadInst>(LoadPrototype->clone());
             NewLoadInst->setOperand(0, NewGEPExpr);
             //NewLoadInst->insertBefore(LoadPrototype);
-            NewLoadInst->insertBefore(SExtList[i]);
-            SExtList[i]->setOperand(0, NewLoadInst);
-            Worklist[ConstantIndices[i]]->replaceAllUsesWith(NewLoadInst);
+            //NewLoadInst->insertBefore(SExtList[i]);
+            //SExtList[i]->setOperand(0, NewLoadInst);
+            NewLoadInst->insertBefore(Parent[ConstantIndices[i]]);
+            Parent[ConstantIndices[i]]->setOperand(0, NewLoadInst);
+            //Worklist[ConstantIndices[i]]->replaceAllUsesWith(NewLoadInst);
+            ModifiedInsts.push_back(NewLoadInst);
           }
         }
         Pkr->ConstantReplaceds[Shorter ? ALoads.begin()->second : BLoads.begin()->second] = ConstantReplaced;
         dbgs() << *(ALoads.begin()->second->getFunction()) << '\n';
+        Pkr->updateFunction(Pkr->getFunction());
+        dbgs() << "===print modified instructions===\n";
+        for (auto *I: ModifiedInsts)
+        {
+          dbgs() << *I << '\n';
+        }
+        //Pkr->addModifiedInsts(ModifiedInsts);
         return;
       }
     }
@@ -672,29 +751,12 @@ static void improvePlan(Packer *Pkr, Plan &P,
     dbgs() << *VP << '\n';
   }
 
-  // try to make dag symmetric
   // if (!Seeds.empty())
   // {
-  //   auto *VP = Seeds.front();
-  //   auto *OP = VP->getOperandPacks().front();
-  //   makeSymmetricDAG(OP, Pkr);
-
-  //   auto *F = Pkr->getFunction();
-  //   ArrayRef<const InstBinding *> SupportedIntrinsics = Pkr->getSupportedIntrinsics();
-  //   auto *AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
-  //   auto *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-  //   auto *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  //   auto *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  //   auto *DI = &getAnalysis<DependenceAnalysisWrapperPass>().getDI();
-  //   auto *LVI = &getAnalysis<LazyValueInfoWrapperPass>().getLVI();
-  //   auto *TTI = &getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
-  //   auto *BFI = &getAnalysis<BlockFrequencyInfoWrapperPass>().getBFI();
-  //   PostDominatorTree PDT(F);
-  //   Packer Pkr(SupportedIntrinsics, F, AA, LI, SE, DT, &PDT, DI, LVI, TTI, BFI);
-
-
-  //   //Pkr->updateFunction(Pkr->getFunction());
+  //   makeSymmetricDAG(Seeds.front()->getOperandPacks().front(), Pkr);
+  //   P.updatePacker(Pkr);
   //   Seeds.clear();
+
   //   for (Instruction &I : instructions(Pkr->getFunction())) {
   //     auto *SI = dyn_cast<StoreInst>(&I);
   //     // Only pack scalar store
@@ -705,7 +767,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
   //         Seeds.push_back(VP);
   //       }
   //   }
-  //   AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
+
+  //   //AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
   //   stable_sort(Seeds, [&](const VectorPack *VP1, const VectorPack *VP2) -> bool {
   //     auto *SI1 = cast<StoreInst>(VP1->getOrderedValues().front());
   //     auto *SI2 = cast<StoreInst>(VP2->getOrderedValues().front());
@@ -715,13 +778,6 @@ static void improvePlan(Packer *Pkr, Plan &P,
   //     int NumElems2 = -int(VP2->numElements());
   //     return std::tie(Id1, NumElems1) < std::tie(Id2, NumElems2);
   //   });
-
-  //   P = Plan(Pkr);
-  // }
-  // dbgs() << "===Store Seeds after update===\n";
-  // for (auto *VP: Seeds)
-  // {
-  //   dbgs() << *VP << '\n';
   // }
 
   Heuristic H(Pkr, Candidates);
@@ -732,9 +788,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
       dbgs() << "===Improving===\n";
       // try to make dag from OP to be symmetric
       makeSymmetricDAG(OP, Pkr);
-      Pkr->updateFunction(Pkr->getFunction());
-      P2 = Plan(Pkr);
-      //H.setPacker(Pkr);
+      //P2 = Plan(Pkr);
+      P2.updatePacker(Pkr);
       auto SolvedPacks = H.solve(OP).Packs;
       //if (!H.solve(OP).Packs.empty())
       if (!SolvedPacks.empty())
@@ -1174,11 +1229,11 @@ float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
   {
     dbgs() << *VP << '\n';
   }
-  if (findDepCycle(Packs, Pkr)) {
+  /*if (findDepCycle(Packs, Pkr)) {
     errs() << "Aborting due to dependence cycle\n";
     Packs.clear();
     return ScalarCost;
-  }
+  }*/
   return P.cost();
 }
 
@@ -1187,6 +1242,13 @@ float optimizeBottomUp(VectorPackSet &PackSet, Packer *Pkr,
   std::vector<const VectorPack *> Packs;
   float Cost = optimizeBottomUp(Packs, Pkr, SeedOperands);
   for (auto *VP : Packs)
-    PackSet.tryAdd(VP);
+  {
+    if(!PackSet.tryAdd(VP))
+    {
+      dbgs() << "try add failed with \n" << *VP << '\n';
+      //PackSet.add(VP);
+    }
+  }
+    
   return Cost;
 }
