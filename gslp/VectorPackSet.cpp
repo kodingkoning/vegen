@@ -915,7 +915,8 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
         VecInst =
             VP->emitVectorLoad(Operands, getLoadStoreMask(Vals, &VL), UseScalar, Builder);
         // emit the vector shuffle here
-        std::vector<std::pair<APInt, Constant*>> ConstantReplaced;
+        //std::vector<std::pair<APInt, Constant*>> ConstantReplaced;
+        std::vector<std::pair<int, Constant*>> ConstantReplaced;
         for (auto *V: Vals)
         {
           if (Pkr.ConstantReplaceds.count(V))
@@ -938,16 +939,10 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
           for (int i = 0; i < ConstantReplaced.size(); ++i)
           {
             auto &p = ConstantReplaced[i];
-            if (auto *C = dyn_cast<ConstantInt>(p.second))
-            {
-              Constants.push_back(ConstantInt::get(dyn_cast<IntegerType>(ElmType), C->getValue().getSExtValue(), true));
-            }
-            else if (auto *C = dyn_cast<ConstantFP>(p.second))
-            {
-              Constants.push_back(ConstantFP::get(ElmType, C->getValue().convertToDouble()));
-            }
+            Constants.push_back(p.second);
             //ShuffleIdxes.push_back(p.first.getSExtValue());
-            auto Idx = p.first.getSExtValue();
+            //auto Idx = p.first.getSExtValue();
+            auto Idx = p.first;
             for (int j = PrevIdx; j < Idx; ++j)
             {
               ShuffleIdxes.push_back(j);

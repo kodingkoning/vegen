@@ -147,9 +147,6 @@ public:
   llvm::LazyValueInfo &getLVI() const { return *LVI; }
   ControlDependenceAnalysis &getCDA() { return CDA; }
 
-  // newly add
-  std::vector<const InstBinding *>& getSupportedInsts() { return SupportedInsts; }
-
   llvm::ArrayRef<Operation::Match> findMatches(const Operation *, llvm::Value *);
 
   const llvm::DataLayout *getDataLayout() const {
@@ -195,7 +192,8 @@ public:
 
   // newly add
   // TODO: Make this private and add getter and setter
-  llvm::DenseMap<llvm::Value*, std::vector<std::pair<llvm::APInt, llvm::Constant*>>> ConstantReplaceds;
+  //llvm::DenseMap<llvm::Value*, std::vector<std::pair<llvm::APInt, llvm::Constant*>>> ConstantReplaceds;
+  llvm::DenseMap<llvm::Value*, std::vector<std::pair<int, llvm::Constant*>>> ConstantReplaceds;
   void updateFunction(llvm::Function *Func);
   void addModifiedInsts(std::vector<llvm::Instruction*> &Insts);
 };

@@ -578,6 +578,13 @@ bool isConstantPack(const OperandPack &OP) {
 
 void VectorPack::getPackedInstructions(
     SmallPtrSetImpl<Instruction *> &Insts) const {
+
+  dbgs() << "get packed instructions\n";
+  for (auto *I: Insts)
+  {
+    if (I)
+      dbgs() << *I << '\n';
+  }
   if (Kind == Reduction) {
     Insts.insert(Rdx->Ops.begin(), Rdx->Ops.end());
     return;
