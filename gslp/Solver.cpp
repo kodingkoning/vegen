@@ -435,6 +435,8 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
   {
     Worklist.push_back(V);
   }
+  if (Worklist.empty())
+    return;
   auto &Context = OP->front()->getContext();
   auto &FstInst = dyn_cast<Instruction>(OP->front())->getParent()->front();
   //DenseMap<Value*, Instruction*> OperandParent;
