@@ -324,6 +324,12 @@ bool GSLP::runOnFunction(Function &F) {
   errs() << "~~~~ num supported intrinsics: " << SupportedIntrinsics.size()
          << '\n';
 
+  for (auto *Inst: SupportedIntrinsics)
+  {
+    dbgs() << Inst->getName() << ' ';
+  }
+  dbgs() << '\n';
+
   DenseMap<Loop *, UnrolledLoopTy> DupToOrigLoopMap;
   DenseMap<Instruction *, UnrolledInstruction> UnrolledIterations;
   if (!DisableUnrolling && !TestCodeGen) {

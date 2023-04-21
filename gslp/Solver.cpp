@@ -477,11 +477,36 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
     {
       break;
     }
+    if (Level == 0) // parent needs to set for level 0
+    {
+      dbgs() << "set parent for level 0\n";
+      for (auto *V: Worklist)
+      {
+        if (auto *I = dyn_cast<Instruction>(V))
+        {
+          if (all_of(I->operand_values(), [](auto *Op){
+            return !isa<Constant>(Op);
+          }))
+          {
+            dbgs() << "parent Instruction " << *I << '\n';
+            Parent.push_back(I);
+            break;
+          }
+        }
+      }
+      if (Parent.empty())
+      {
+        break;
+      }
+      else
+      {
+        dbgs() << "parent Instruction " << *Parent.front() <<'\n';
+      }
+    }
     //if (AllSame && !HasConstant)
     if (!HasConstant)
     {
       dbgs() << "===Allsame===\n";
-      ++Level;
       std::vector<Value*> NewWorklist;
       std::vector<Instruction*> NewParent;
       std::vector<int> NewOperandIdx;
@@ -505,9 +530,16 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             }
             if (NonConst >= 0)
             {
-              auto *P = Parent[j];
               auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
-              auto *I2 = dyn_cast<Instruction>(dyn_cast<Instruction>(P->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+              Instruction *I2 = nullptr;
+              if (Level == 0)
+              {
+                I2 = dyn_cast<Instruction>(Parent[0]->getOperand(NonConst));
+              }
+              else
+              {
+                I2 = dyn_cast<Instruction>(dyn_cast<Instruction>(Parent[j]->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+              }
               dbgs() << "before findloadarr" << *I2 << '\n' << *I1 << '\n';
               if (I2 && findLoadArr(I2) != findLoadArr(I1))
               {
@@ -529,6 +561,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       Worklist = NewWorklist;
       Parent = NewParent;
       OperandIdx = NewOperandIdx;
+      ++Level;
     }
     else if (HasSExt)
     {
@@ -569,11 +602,11 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       Worklist = NewWorklist;
       Parent = NewParent;
       OperandIdx = NewOperandIdx;
+      ++Level;
     }
     else
     {
       dbgs() << "===Make symmetric===\n";
-      ++Level;
       if (HasLoad && HasConstant)
       {
         std::vector<LoadInst*> ALoads;
@@ -630,16 +663,25 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
           ALoads.swap(BLoads);
           std::swap(ArrA, ArrB);
         }
+        dbgs() << ALoads.size() << ' ' << BLoads.size() << ' ' << ConstantIndices.size() << '\n';
         int DiffSize = ALoads.size() - BLoads.size();
         if (DiffSize != ConstantIndices.size())
           break;
         int AIdx = 0;
         int BIdx = 0;
         std::vector<int> Diff;
-        while (AIdx < ALoads.size() && BIdx < BLoads.size())
+        for (auto *L: ALoads)
         {
-          auto *AOp = dyn_cast<User>(ALoads[AIdx]->getPointerOperand())->getOperand(2);
-          auto *BOp = dyn_cast<User>(BLoads[BIdx]->getPointerOperand())->getOperand(2);
+          dbgs() << *L << '\n';
+        }
+        for (auto *L: BLoads)
+        {
+          dbgs() << *L << '\n';
+        }
+        while (AIdx < ALoads.size() || BIdx < BLoads.size())
+        {
+          auto *AOp = AIdx < ALoads.size() ? dyn_cast<User>(ALoads[AIdx]->getPointerOperand())->getOperand(2) : nullptr;
+          auto *BOp = BIdx < BLoads.size() ? dyn_cast<User>(BLoads[BIdx]->getPointerOperand())->getOperand(2) : nullptr;
           if (AOp == BOp)
           {
             AIdx++;
@@ -650,6 +692,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             Diff.push_back(AIdx++);
           }
         }
+        dbgs() << "print Diff\n";
         for (auto D: Diff)
         {
           dbgs() << D << '\n';
@@ -692,6 +735,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
         Pkr->ConstantReplaceds[BLoads.front()] = ConstantReplaced;
         break;
       }
+      ++Level;
     }
   }
   dbgs() << *Pkr->getFunction() << '\n';

@@ -684,7 +684,7 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
       }
     }
   }
-  std::vector<std::pair<Value*, Instruction*>> LoadAndShuffle;
+  std::vector<std::pair<Instruction*, Instruction*>> LoadAndShuffle;
   // Now generate code according to the schedule
   for (auto &InstOrLoop : Schedule) {
     // Emit the sub-loop recursively
@@ -963,12 +963,12 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
           auto *NewInst = new ShuffleVectorInst(VecInst, ConstVec, ShuffleIdxes);
           //VecInst->replaceAllUsesWith(NewInst);
           //NewInst->setOperand(0, VecInst);
-          LoadAndShuffle.emplace_back(VecInst, NewInst);
-          if (auto *I = dyn_cast<Instruction>(VecInst))
+          LoadAndShuffle.emplace_back(cast<Instruction>(VecInst), NewInst);
+          /*if (auto *I = dyn_cast<Instruction>(VecInst))
           {
             NewInst->insertAfter(I);
           }
-          dbgs() << *F << '\n';
+          dbgs() << *F << '\n';*/
         }
       }
 
@@ -1017,8 +1017,19 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
   for (auto &p: LoadAndShuffle)
   {
     dbgs() << "Load and shuffle\n" << *p.first << '\n' << *p.second << '\n';
-    p.first->replaceAllUsesWith(p.second);
-    p.second->setOperand(0, p.first);
+    if (auto *I = dyn_cast<ShuffleVectorInst>(*p.first->user_begin()))
+    {
+      dbgs() << "Has shuffle " << *I << '\n';
+      p.second->insertAfter(I);
+      I->replaceAllUsesWith(p.second);
+      p.second->setOperand(0, I);
+    }
+    else
+    {
+      p.second->insertAfter(p.first);
+      p.first->replaceAllUsesWith(p.second);
+      p.second->setOperand(0, p.first);
+    }
   }
 
   if (!VL.isLoop())
