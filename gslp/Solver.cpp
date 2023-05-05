@@ -19,7 +19,8 @@ static cl::opt<bool>
                 cl::desc("Refine the initial vectorization plan"),
                 cl::init(false));
 
-unsigned getBitWidth(Value *V, const DataLayout *DL) {
+unsigned getBitWidth(Value *V, const DataLayout *DL)
+{
   auto *Ty = V->getType();
   if (Ty->isIntegerTy())
     return Ty->getIntegerBitWidth();
@@ -40,7 +41,8 @@ VectorPack *createMemPack(Packer *Pkr, ArrayRef<AccessType *> Accesses,
 template <>
 VectorPack *createMemPack(Packer *Pkr, ArrayRef<StoreInst *> Stores,
                           const BitVector &Elements, const BitVector &Depended,
-                          TargetTransformInfo *TTI) {
+                          TargetTransformInfo *TTI)
+{
   return Pkr->getContext()->createStorePack(
       Stores, Pkr->getConditionPack(Stores), Elements, Depended, TTI);
 }
@@ -48,7 +50,8 @@ VectorPack *createMemPack(Packer *Pkr, ArrayRef<StoreInst *> Stores,
 template <>
 VectorPack *createMemPack(Packer *Pkr, ArrayRef<LoadInst *> Loads,
                           const BitVector &Elements, const BitVector &Depended,
-                          TargetTransformInfo *TTI) {
+                          TargetTransformInfo *TTI)
+{
   return Pkr->getContext()->createLoadPack(Loads, Pkr->getConditionPack(Loads),
                                            Elements, Depended, TTI);
 }
@@ -56,7 +59,8 @@ VectorPack *createMemPack(Packer *Pkr, ArrayRef<LoadInst *> Loads,
 template <typename AccessType>
 std::vector<VectorPack *>
 getSeedMemPacks(Packer *Pkr, AccessType *Access, unsigned VL,
-                DenseSet<BasicBlock *> *BlocksToIgnore) {
+                DenseSet<BasicBlock *> *BlocksToIgnore)
+{
   auto &DA = Pkr->getDA();
   auto *VPCtx = Pkr->getContext();
   auto *TTI = Pkr->getTTI();
@@ -68,54 +72,59 @@ getSeedMemPacks(Packer *Pkr, AccessType *Access, unsigned VL,
   auto &LI = Pkr->getLoopInfo();
   std::function<void(std::vector<AccessType *>, BitVector, BitVector)>
       Enumerate = [&](std::vector<AccessType *> Accesses, BitVector Elements,
-                      BitVector Depended) {
-        if (Accesses.size() == VL) {
-          // Make sure we can compute the addresses speculatively if we are
-          // doing masked load/stores
-          auto *AddrComp =
-              dyn_cast<Instruction>(Accesses.front()->getPointerOperand());
-          SmallVector<Instruction *, 8> AccessInsts(Accesses.begin(),
-                                                    Accesses.end());
-          if (AddrComp &&
-              !Pkr->canSpeculateAt(
-                  AddrComp, Pkr->findSpeculationCond(AddrComp, AccessInsts))) {
-            return;
-          }
+                      BitVector Depended)
+  {
+    if (Accesses.size() == VL)
+    {
+      // Make sure we can compute the addresses speculatively if we are
+      // doing masked load/stores
+      auto *AddrComp =
+          dyn_cast<Instruction>(Accesses.front()->getPointerOperand());
+      SmallVector<Instruction *, 8> AccessInsts(Accesses.begin(),
+                                                Accesses.end());
+      if (AddrComp &&
+          !Pkr->canSpeculateAt(
+              AddrComp, Pkr->findSpeculationCond(AddrComp, AccessInsts)))
+      {
+        return;
+      }
 
-          Seeds.push_back(createMemPack<AccessType>(Pkr, Accesses, Elements,
-                                                    Depended, TTI));
-          return;
-        }
+      Seeds.push_back(createMemPack<AccessType>(Pkr, Accesses, Elements,
+                                                Depended, TTI));
+      return;
+    }
 
-        auto It = AccessDAG.find(Accesses.back());
-        if (It == AccessDAG.end()) {
-          return;
-        }
-        for (auto *Next : It->second) {
-          if (!IsStore && LI.getLoopFor(Next->getParent()) !=
-                              LI.getLoopFor(Accesses.back()->getParent()))
-            continue;
-          if (BlocksToIgnore && BlocksToIgnore->count(Next->getParent()))
-            continue;
-          auto *NextAccess = cast<AccessType>(Next);
-          if (!checkIndependence(DA, *VPCtx, NextAccess, Elements, Depended)) {
-            continue;
-          }
-          if (any_of(Accesses, [&](auto *Access) {
-                return !Pkr->isCompatible(Access, NextAccess);
-              }))
-            continue;
+    auto It = AccessDAG.find(Accesses.back());
+    if (It == AccessDAG.end())
+    {
+      return;
+    }
+    for (auto *Next : It->second)
+    {
+      if (!IsStore && LI.getLoopFor(Next->getParent()) !=
+                          LI.getLoopFor(Accesses.back()->getParent()))
+        continue;
+      if (BlocksToIgnore && BlocksToIgnore->count(Next->getParent()))
+        continue;
+      auto *NextAccess = cast<AccessType>(Next);
+      if (!checkIndependence(DA, *VPCtx, NextAccess, Elements, Depended))
+      {
+        continue;
+      }
+      if (any_of(Accesses, [&](auto *Access)
+                 { return !Pkr->isCompatible(Access, NextAccess); }))
+        continue;
 
-          auto AccessesExt = Accesses;
-          auto ElementsExt = Elements;
-          auto DependedExt = Depended;
-          AccessesExt.push_back(NextAccess);
-          ElementsExt.set(VPCtx->getScalarId(NextAccess));
-          DependedExt |= DA.getDepended(NextAccess);
-          Enumerate(AccessesExt, ElementsExt, DependedExt);
-          break;
-        }
-      };
+      auto AccessesExt = Accesses;
+      auto ElementsExt = Elements;
+      auto DependedExt = Depended;
+      AccessesExt.push_back(NextAccess);
+      ElementsExt.set(VPCtx->getScalarId(NextAccess));
+      DependedExt |= DA.getDepended(NextAccess);
+      Enumerate(AccessesExt, ElementsExt, DependedExt);
+      break;
+    }
+  };
 
   std::vector<AccessType *> Accesses{Access};
   BitVector Elements(VPCtx->getNumValues());
@@ -129,7 +138,8 @@ getSeedMemPacks(Packer *Pkr, AccessType *Access, unsigned VL,
 }
 
 std::vector<const VectorPack *>
-enumerate(Packer *Pkr, DenseSet<BasicBlock *> *BlocksToIgnore) {
+enumerate(Packer *Pkr, DenseSet<BasicBlock *> *BlocksToIgnore)
+{
   auto &DA = Pkr->getDA();
   auto *VPCtx = Pkr->getContext();
   auto &LayoutInfo = Pkr->getStoreInfo();
@@ -137,7 +147,8 @@ enumerate(Packer *Pkr, DenseSet<BasicBlock *> *BlocksToIgnore) {
   auto *TTI = Pkr->getTTI();
 
   std::vector<const VectorPack *> Packs;
-  for (Instruction &I : instructions(Pkr->getFunction())) {
+  for (Instruction &I : instructions(Pkr->getFunction()))
+  {
     if (BlocksToIgnore && BlocksToIgnore->count(I.getParent()))
       continue;
 
@@ -148,7 +159,8 @@ enumerate(Packer *Pkr, DenseSet<BasicBlock *> *BlocksToIgnore) {
     unsigned AS = LI->getPointerAddressSpace();
     unsigned MaxVF = TTI->getLoadStoreVecRegBitWidth(AS) /
                      getBitWidth(LI, Pkr->getDataLayout());
-    for (unsigned VL : {64, 32, 16, 8, 4, 2}) {
+    for (unsigned VL : {64, 32, 16, 8, 4, 2})
+    {
       if (VL > MaxVF)
         continue;
       for (auto *VP : getSeedMemPacks(Pkr, LI, VL, BlocksToIgnore))
@@ -165,21 +177,23 @@ void runBottomUpFromOperand(
     const OperandPack *OP, Plan &P, Heuristic &H, bool OverrideExisting,
     std::function<void(const VectorPack *,
                        llvm::SmallVectorImpl<const OperandPack *> &)>
-                       
-        GetExtraOperands) {
+
+        GetExtraOperands)
+{
   // Plan Best = P;
   dbgs() << "runBottomUpFromOperand\n";
   SmallVector<const OperandPack *> Worklist;
-  //std::deque<const OperandPack*> Worklist; 
+  // std::deque<const OperandPack*> Worklist;
   Worklist.push_back(OP);
   SmallPtrSet<const OperandPack *, 4> Visited;
-  DenseMap<const OperandPack*, int> OPLevel;
+  DenseMap<const OperandPack *, int> OPLevel;
 
-  while (!Worklist.empty()) {
+  while (!Worklist.empty())
+  {
     assert(P.verifyCost());
     auto *OP = Worklist.pop_back_val();
-    //auto *OP = Worklist.front();
-    //Worklist.erase(Worklist.begin()); // pop the first OperandPack
+    // auto *OP = Worklist.front();
+    // Worklist.erase(Worklist.begin()); // pop the first OperandPack
 
     if (!Visited.insert(OP).second)
       continue;
@@ -199,7 +213,8 @@ void runBottomUpFromOperand(
 
     for (auto *VP2 : OldPacks)
       P.remove(VP2);
-    for (const VectorPack *VP : NewPacks) {
+    for (const VectorPack *VP : NewPacks)
+    {
       P.add(VP);
       ArrayRef<const OperandPack *> Operands = VP->getOperandPacks();
       Worklist.append(Operands.begin(), Operands.end());
@@ -208,11 +223,11 @@ void runBottomUpFromOperand(
       {
         OPLevel[NewOP] = OldLevel + 1;
       }*/
-      //for (auto *OP: Operands)
+      // for (auto *OP: Operands)
       //{
-      //  Worklist.push_back(OP);
-      //}
-      //SmallVector<const OperandPack*> (Worklist.begin(), Worklist.end());
+      //   Worklist.push_back(OP);
+      // }
+      // SmallVector<const OperandPack*> (Worklist.begin(), Worklist.end());
       if (GetExtraOperands)
         GetExtraOperands(VP, Worklist);
     }
@@ -224,9 +239,11 @@ void runBottomUpFromOperand(
 
 SmallVector<const OperandPack *> deinterleave(const VectorPackContext *VPCtx,
                                               const OperandPack *OP,
-                                              unsigned Stride) {
+                                              unsigned Stride)
+{
   SmallVector<const OperandPack *> Results;
-  for (unsigned i = 0; i < Stride; i++) {
+  for (unsigned i = 0; i < Stride; i++)
+  {
     OperandPack OP2;
     for (unsigned j = i; j < OP->size(); j += Stride)
       OP2.push_back((*OP)[j]);
@@ -236,7 +253,8 @@ SmallVector<const OperandPack *> deinterleave(const VectorPackContext *VPCtx,
 }
 
 static const OperandPack *concat(const VectorPackContext *VPCtx,
-                                 ArrayRef<Value *> A, ArrayRef<Value *> B) {
+                                 ArrayRef<Value *> A, ArrayRef<Value *> B)
+{
   OperandPack Concat;
   Concat.append(A.begin(), A.end());
   Concat.append(B.begin(), B.end());
@@ -244,17 +262,20 @@ static const OperandPack *concat(const VectorPackContext *VPCtx,
 }
 
 static const OperandPack *interleave(const VectorPackContext *VPCtx,
-                                     ArrayRef<Value *> A, ArrayRef<Value *> B) {
+                                     ArrayRef<Value *> A, ArrayRef<Value *> B)
+{
   OperandPack Interleaved;
   assert(A.size() == B.size());
-  for (unsigned i = 0; i < A.size(); i++) {
+  for (unsigned i = 0; i < A.size(); i++)
+  {
     Interleaved.push_back(A[i]);
     Interleaved.push_back(B[i]);
   }
   return VPCtx->getCanonicalOperandPack(Interleaved);
 }
 
-static BasicBlock *getBlockForPack(const VectorPack *VP) {
+static BasicBlock *getBlockForPack(const VectorPack *VP)
+{
   for (auto *V : VP->elementValues())
     if (auto *I = dyn_cast<Instruction>(V))
       return I->getParent();
@@ -263,7 +284,8 @@ static BasicBlock *getBlockForPack(const VectorPack *VP) {
 
 // decompose a store pack to packs that fit in native bitwidth
 static SmallVector<const VectorPack *>
-decomposeStorePacks(Packer *Pkr, const VectorPack *VP) {
+decomposeStorePacks(Packer *Pkr, const VectorPack *VP)
+{
   assert(VP->isStore());
   auto *BB = getBlockForPack(VP);
   auto *VPCtx = Pkr->getContext();
@@ -277,11 +299,13 @@ decomposeStorePacks(Packer *Pkr, const VectorPack *VP) {
   if (Values.size() <= VL)
     return {VP};
   SmallVector<const VectorPack *> Decomposed;
-  for (unsigned i = 0, N = Values.size(); i < N; i += VL) {
+  for (unsigned i = 0, N = Values.size(); i < N; i += VL)
+  {
     SmallVector<StoreInst *> Stores;
     BitVector Elements(VPCtx->getNumValues());
     BitVector Depended(VPCtx->getNumValues());
-    for (unsigned j = i; j < std::min(i + VL, N); j++) {
+    for (unsigned j = i; j < std::min(i + VL, N); j++)
+    {
       auto *SI = cast<StoreInst>(Values[j]);
       Stores.push_back(SI);
       Elements.set(VPCtx->getScalarId(SI));
@@ -293,11 +317,13 @@ decomposeStorePacks(Packer *Pkr, const VectorPack *VP) {
   return Decomposed;
 }
 
-static unsigned greatestPowerOfTwoDivisor(unsigned n) {
+static unsigned greatestPowerOfTwoDivisor(unsigned n)
+{
   return (n & (~(n - 1)));
 }
 
-static bool haveIdenticalTripCountsAux(Value *A, Value *B, Packer *Pkr) {
+static bool haveIdenticalTripCountsAux(Value *A, Value *B, Packer *Pkr)
+{
   auto *I1 = cast<Instruction>(A);
   auto *I2 = cast<Instruction>(B);
   auto *VL1 = Pkr->getVLoopFor(I1);
@@ -313,16 +339,18 @@ static bool haveIdenticalTripCountsAux(Value *A, Value *B, Packer *Pkr) {
 // loops
 static void
 getBackEdAGEPcks(Packer *Pkr, const Plan &P,
-                 SmallPtrSetImpl<const ConditionPack *> &BackEdAGEPcks) {
+                 SmallPtrSetImpl<const ConditionPack *> &BackEdAGEPcks)
+{
   auto *VPCtx = Pkr->getContext();
-  for (auto *VP : P) {
+  for (auto *VP : P)
+  {
     auto Vals = VP->getOrderedValues();
-    if (all_of(drop_begin(Vals), [&](Value *V) {
-          return !V || haveIdenticalTripCountsAux(Vals.front(), V, Pkr);
-        }))
+    if (all_of(drop_begin(Vals), [&](Value *V)
+               { return !V || haveIdenticalTripCountsAux(Vals.front(), V, Pkr); }))
       continue;
     SmallVector<const ControlCondition *, 8> Conds;
-    auto *SomeVal = *find_if(Vals, [](Value *V) { return V != nullptr; });
+    auto *SomeVal = *find_if(Vals, [](Value *V)
+                             { return V != nullptr; });
     for (auto *V : Vals)
       Conds.push_back(Pkr->getVLoopFor(cast<Instruction>(V ? V : SomeVal))
                           ->getBackEdgeCond());
@@ -330,7 +358,8 @@ getBackEdAGEPcks(Packer *Pkr, const Plan &P,
   }
 }
 
-void tryPackBackEdgeConds(Packer *Pkr, Plan &P, Heuristic &H) {
+void tryPackBackEdgeConds(Packer *Pkr, Plan &P, Heuristic &H)
+{
   SmallPtrSet<const ConditionPack *, 4> BackEdAGEPcks;
   getBackEdAGEPcks(Pkr, P, BackEdAGEPcks);
   SmallVector<const OperandPack *, 4> OPs;
@@ -347,9 +376,11 @@ static void findLoopFreeReductions(SmallVectorImpl<const VectorPack *> &Seeds,
                                    GlobalDependenceAnalysis &DA,
                                    const VectorPackContext *VPCtx,
                                    const DataLayout *DL,
-                                   TargetTransformInfo *TTI) {
+                                   TargetTransformInfo *TTI)
+{
   SmallVector<Value *> Worklist;
-  for (auto &I : instructions(F)) {
+  for (auto &I : instructions(F))
+  {
     if (isa<StoreInst>(&I))
       continue;
     if (I.use_empty() &&
@@ -358,7 +389,8 @@ static void findLoopFreeReductions(SmallVectorImpl<const VectorPack *> &Seeds,
   }
 
   DenseSet<Value *> Visited;
-  while (!Worklist.empty()) {
+  while (!Worklist.empty())
+  {
     auto *Root = Worklist.pop_back_val();
     if (!Visited.insert(Root).second)
       continue;
@@ -366,28 +398,32 @@ static void findLoopFreeReductions(SmallVectorImpl<const VectorPack *> &Seeds,
     if (!Ty->isIntegerTy() && !Ty->isFloatTy() && !Ty->isIntegerTy())
       continue;
     Optional<ReductionInfo>(RI) = matchLoopFreeReduction(Root);
-    if (RI && RI->Elts.size() % 2 == 0) {
+    if (RI && RI->Elts.size() % 2 == 0)
+    {
       unsigned RdxLen =
-        std::min<unsigned>(greatestPowerOfTwoDivisor(RI->Elts.size()),
-            MaxVecWidth / getBitWidth(Root, DL));
+          std::min<unsigned>(greatestPowerOfTwoDivisor(RI->Elts.size()),
+                             MaxVecWidth / getBitWidth(Root, DL));
       BitVector Depended(VPCtx->getNumValues());
       for (auto *V : RI->Elts)
-        if (auto *I2 = dyn_cast<Instruction>(V)) {
+        if (auto *I2 = dyn_cast<Instruction>(V))
+        {
           Depended |= DA.getDepended(I2);
           Depended.set(VPCtx->getScalarId(I2));
         }
       Seeds.push_back(
           VPCtx->createLoopFreeReduction(*RI, RdxLen, Depended, TTI));
       Worklist.append(RI->Elts);
-    } else if (auto *I = dyn_cast<Instruction>(Root)) {
+    }
+    else if (auto *I = dyn_cast<Instruction>(Root))
+    {
       Worklist.append(I->value_op_begin(), I->value_op_end());
     }
   }
 }
 
-static Value* findLoadArr(Instruction *I)
+static Value *findLoadArr(Instruction *I, int Depth)
 {
-  dbgs() << "findLoadArr: " << *I << '\n';
+  // dbgs() << "findLoadArr: " << *I << '\n';
   if (auto *L = dyn_cast<LoadInst>(I))
   {
     if (auto *GEP = dyn_cast<ConstantExpr>(L->getPointerOperand()))
@@ -398,15 +434,19 @@ static Value* findLoadArr(Instruction *I)
     {
       return GEP->getOperand(0);
     }
-    else 
+    else
       return nullptr;
   }
+  if (Depth == 0)
+  {
+    return nullptr;
+  }
   Value *V = nullptr;
-  for (auto &Use: I->operands())
+  for (auto &Use : I->operands())
   {
     if (auto *IChild = dyn_cast<Instruction>(Use.get()))
     {
-      Value *TChild = findLoadArr(IChild);
+      Value *TChild = findLoadArr(IChild, Depth - 1);
       if (!V)
       {
         V = TChild;
@@ -420,42 +460,62 @@ static Value* findLoadArr(Instruction *I)
   return V;
 }
 
-static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
+static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
 {
   // TODO: compute the cost of making it symmetric
-  dbgs() << "===make symmetric dag===\n";
+  // dbgs() << "===make symmetric dag===\n";
   constexpr int MaxLevel = 3;
   dbgs() << "Function before makeSymmetricDAG\n";
   dbgs() << *Pkr->getFunction() << '\n';
   int Level = 0;
-  std::vector<Value*> Worklist;
-  std::vector<Instruction*> Parent;
+  std::vector<Value *> Worklist;
+  std::vector<Instruction *> Parent;
   std::vector<int> OperandIdx;
-  for (auto *V: *OP)
+  for (auto *V : *OP)
   {
     Worklist.push_back(V);
   }
   if (Worklist.empty())
     return;
-  auto &Context = OP->front()->getContext();
-  auto &FstInst = dyn_cast<Instruction>(OP->front())->getParent()->front();
-  //DenseMap<Value*, Instruction*> OperandParent;
+  auto &Context = Pkr->getFunction()->getContext();
+  // DenseMap<Value*, Instruction*> OperandParent;
   while (Level <= MaxLevel)
   {
     auto FstType = Worklist.front()->getType();
     bool AllSame = true;
     bool HasLoad = false;
     bool HasConstant = false;
-    bool HasSExt = false;
-    llvm::Type* DestTy;
-    llvm::Type* SrcTy;
-    dbgs() << "Level " << Level << '\n' << "Worklist: \n";
-    for (auto *V: Worklist)
+    bool HasCastInst = false;
+    int Opcode = -1;
+    Instruction *FirstInst = nullptr;
+    llvm::Type *DestTy;
+    llvm::Type *SrcTy;
+    llvm::CastInst *CastPrototype;
+    dbgs() << "Level " << Level << '\n'
+           << "Worklist: \n";
+    for (auto *V : Worklist)
     {
       dbgs() << *V << "\n";
     }
-    for (auto* V: Worklist)
+    for (auto *V : Worklist)
     {
+      if (isa<PHINode>(V))
+      {
+        AllSame = false;
+        break;
+      }
+      if (auto *I = dyn_cast<Instruction>(V))
+      {
+        if (Opcode == -1)
+        {
+          Opcode = I->getOpcode();
+        }
+        else if (Opcode != I->getOpcode())
+        {
+          AllSame = false;
+          break;
+        }
+      }
       if (V->getType() != FstType)
       {
         AllSame = false;
@@ -468,9 +528,10 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       {
         HasConstant = true;
       }
-      if (auto *S = dyn_cast<SExtInst>(V))
+      if (auto *S = dyn_cast<CastInst>(V))
       {
-        HasSExt = true;
+        HasCastInst = true;
+        CastPrototype = S;
         DestTy = S->getDestTy();
         SrcTy = S->getSrcTy();
       }
@@ -479,18 +540,17 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
     {
       break;
     }
-    if (Level == 0) // parent needs to set for level 0
+    /*if (Level == 0) // parent needs to set for level 0
     {
-      dbgs() << "set parent for level 0\n";
-      for (auto *V: Worklist)
+      // dbgs() << "set parent for level 0\n";
+      for (auto *V : Worklist)
       {
         if (auto *I = dyn_cast<Instruction>(V))
         {
-          if (all_of(I->operand_values(), [](auto *Op){
-            return !isa<Constant>(Op);
-          }))
+          if (all_of(I->operand_values(), [](auto *Op)
+                     { return !isa<Constant>(Op); }))
           {
-            dbgs() << "parent Instruction " << *I << '\n';
+            // dbgs() << "parent Instruction " << *I << '\n';
             Parent.push_back(I);
             break;
           }
@@ -502,23 +562,27 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       }
       else
       {
-        dbgs() << "parent Instruction " << *Parent.front() <<'\n';
+        // dbgs() << "parent Instruction " << *Parent.front() <<'\n';
       }
-    }
-    //if (AllSame && !HasConstant)
+    }*/
+    // if (AllSame && !HasConstant)
     if (!HasConstant)
     {
       dbgs() << "===Allsame===\n";
-      std::vector<Value*> NewWorklist;
-      std::vector<Instruction*> NewParent;
+      std::vector<Value *> NewWorklist;
+      std::vector<Instruction *> NewParent;
       std::vector<int> NewOperandIdx;
-      //for (auto *V: Worklist)
+      // for (auto *V: Worklist)
       for (int j = 0; j < Worklist.size(); ++j)
       {
         auto *V = Worklist[j];
         if (auto *I = dyn_cast<Instruction>(V))
         {
           // swap the order of operands of binary operator if the arrays loaded are unmatched
+          if (I->isCommutative())
+          {
+            break; // since all instructions are the same
+          }
           if (auto *B = dyn_cast<BinaryOperator>(I))
           {
             int NonConst = -1;
@@ -530,25 +594,36 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             {
               NonConst = 0;
             }
+            dbgs() << "NonConst " << NonConst << '\n';
             if (NonConst >= 0)
             {
               auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
               Instruction *I2 = nullptr;
-              if (Level == 0)
+              BinaryOperator *P = nullptr;
+              // if (Level == 0)
+              //{
+              //   I2 = dyn_cast<Instruction>(Parent.front()->getOperand(NonConst));
+              // }
+              // else
+              //{
+              if (Level > 0)
+                P = dyn_cast<BinaryOperator>(Parent[j]);
+              if (P)
               {
-                I2 = dyn_cast<Instruction>(Parent[0]->getOperand(NonConst));
+                I2 = dyn_cast<Instruction>(cast<Instruction>(P->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
               }
               else
               {
-                I2 = dyn_cast<Instruction>(dyn_cast<Instruction>(Parent[j]->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+                I2 = dyn_cast<Instruction>(cast<Instruction>(Worklist.front())->getOperand(NonConst));
               }
-              dbgs() << "before findloadarr" << *I2 << '\n' << *I1 << '\n';
-              if (I2 && findLoadArr(I2) != findLoadArr(I1))
+              //}
+              // dbgs() << "before findloadarr" << *I2 << '\n' << *I1 << '\n';
+              if (!I2 && I2 != I1)
               {
-                auto *Op0 = I->getOperand(0);
-                auto *Op1 = I->getOperand(1);
-                I->setOperand(1, Op0);
-                I->setOperand(0, Op1);
+                auto *LoadI1 = findLoadArr(I1, MaxLevel);
+                auto *LoadI2 = findLoadArr(I2, MaxLevel);
+                if (LoadI1 || LoadI2 && (LoadI1 != LoadI2))
+                  B->swapOperands();
               }
             }
           }
@@ -558,26 +633,26 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             NewParent.push_back(I);
             NewOperandIdx.push_back(i);
           }
-        }    
+        }
       }
       Worklist = NewWorklist;
       Parent = NewParent;
       OperandIdx = NewOperandIdx;
       ++Level;
     }
-    else if (HasSExt)
+    else if (HasCastInst)
     {
-      dbgs() << "===HasSExt===\n";
-      std::vector<Value*> NewWorklist;
-      std::vector<Instruction*> NewParent;
+      dbgs() << "===HasCastInst===\n";
+      std::vector<Value *> NewWorklist;
+      std::vector<Instruction *> NewParent;
       std::vector<int> NewOperandIdx;
       for (int i = 0; i < Worklist.size(); ++i)
       {
-        auto *V = Worklist[i];        
-        if (!isa<SExtInst>(V))
+        auto *V = Worklist[i];
+        if (!isa<CastInst>(V))
         {
           auto *InsertPoint = dyn_cast<Instruction>(Parent[i]);
-          auto *NewInst = new SExtInst(nullptr, DestTy, "", InsertPoint);
+          auto *NewInst = llvm::CastInst::Create(CastPrototype->getOpcode(), nullptr, DestTy, "", InsertPoint);
           Parent[i]->setOperand(OperandIdx[i], NewInst);
           if (auto *C = dyn_cast<ConstantInt>(V))
           {
@@ -587,13 +662,13 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
           {
             NewWorklist.push_back(ConstantFP::get(SrcTy, C->getValue().convertToDouble()));
           }
-          //NewWorklist.push_back(V);
+          // NewWorklist.push_back(V);
           NewParent.push_back(NewInst);
           NewOperandIdx.push_back(0);
         }
         else
         {
-          if (auto *I = dyn_cast<SExtInst>(V))
+          if (auto *I = dyn_cast<CastInst>(V))
           {
             NewWorklist.push_back(I->getOperand(0));
             NewParent.push_back(I);
@@ -611,27 +686,27 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       dbgs() << "===Make symmetric===\n";
       if (HasLoad && HasConstant)
       {
-        std::vector<LoadInst*> ALoads;
-        std::vector<LoadInst*> BLoads;
+        std::vector<LoadInst *> ALoads;
+        std::vector<LoadInst *> BLoads;
         std::vector<int> ConstantIndices;
-        std::vector<std::pair<int, Constant*>> ConstantReplaced;
-        Value* ArrA = nullptr;
-        Value* ArrB = nullptr;
+        std::vector<std::pair<int, Constant *>> ConstantReplaced;
+        Value *ArrA = nullptr;
+        Value *ArrB = nullptr;
         for (int i = 0; i < Worklist.size(); ++i)
         {
           auto *V = Worklist[i];
-          dbgs() << "Looping V: " << *V << '\n';
+          // dbgs() << "Looping V: " << *V << '\n';
           if (auto *L = dyn_cast<LoadInst>(V))
           {
             if (auto *PtrOp = dyn_cast<User>(L->getPointerOperand()))
             {
-              dbgs() << *L->getPointerOperand() << '\n';
+              // dbgs() << *L->getPointerOperand() << '\n';
               if (isa<ConstantExpr>(PtrOp) || isa<GetElementPtrInst>(PtrOp))
               {
-                dbgs() << "print GEP operands\n";
-                for (Use& OP: PtrOp->operands())
+                // dbgs() << "print GEP operands\n";
+                for (Use &OP : PtrOp->operands())
                 {
-                  dbgs() << *OP.get() << '\n';
+                  // dbgs() << *OP.get() << '\n';
                 }
                 auto *Arr = PtrOp->getOperand(0);
                 if (!ArrA)
@@ -652,7 +727,6 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
                 }
               }
             }
-            
           }
           if (auto *C = dyn_cast<Constant>(V))
           {
@@ -665,20 +739,20 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
           ALoads.swap(BLoads);
           std::swap(ArrA, ArrB);
         }
-        dbgs() << ALoads.size() << ' ' << BLoads.size() << ' ' << ConstantIndices.size() << '\n';
+        // dbgs() << ALoads.size() << ' ' << BLoads.size() << ' ' << ConstantIndices.size() << '\n';
         int DiffSize = ALoads.size() - BLoads.size();
         if (DiffSize != ConstantIndices.size())
           break;
         int AIdx = 0;
         int BIdx = 0;
         std::vector<int> Diff;
-        for (auto *L: ALoads)
+        for (auto *L : ALoads)
         {
-          dbgs() << *L << '\n';
+          // dbgs() << *L << '\n';
         }
-        for (auto *L: BLoads)
+        for (auto *L : BLoads)
         {
-          dbgs() << *L << '\n';
+          // dbgs() << *L << '\n';
         }
         while (AIdx < ALoads.size() || BIdx < BLoads.size())
         {
@@ -694,10 +768,10 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             Diff.push_back(AIdx++);
           }
         }
-        dbgs() << "print Diff\n";
-        for (auto D: Diff)
+        // dbgs() << "print Diff\n";
+        for (auto D : Diff)
         {
-          dbgs() << D << '\n';
+          // dbgs() << D << '\n';
         }
         for (int i = 0; i < DiffSize; ++i)
         {
@@ -707,7 +781,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
           }
           if (auto *AGEP = dyn_cast<ConstantExpr>(ALoads[Diff[i]]->getPointerOperand()))
           {
-            std::vector<Constant*> GEPOperands;
+            std::vector<Constant *> GEPOperands;
             for (int i = 0; i < AGEP->getNumOperands(); ++i)
             {
               GEPOperands.push_back(AGEP->getOperand(i));
@@ -715,7 +789,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             GEPOperands[0] = dyn_cast<Constant>(ArrB);
             auto *NewGEPExpr = AGEP->getWithOperands(GEPOperands);
             auto *LoadPrototype = ALoads[i];
-            dbgs() << "i " << i << "Index " << Diff[i] << " " << *LoadPrototype << '\n';
+            // dbgs() << "i " << i << "Index " << Diff[i] << " " << *LoadPrototype << '\n';
             auto *NewLoadInst = dyn_cast<LoadInst>(LoadPrototype->clone());
             NewLoadInst->setOperand(0, NewGEPExpr);
             NewLoadInst->insertBefore(Parent[ConstantIndices[i]]);
@@ -726,7 +800,7 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
             auto *NewGEPInst = dyn_cast<GetElementPtrInst>(AGEP->clone());
             NewGEPInst->setOperand(0, ArrB);
             auto *LoadPrototype = ALoads[i];
-            dbgs() << "i " << i << "Index " << Diff[i] << " " << *LoadPrototype << '\n';
+            // dbgs() << "i " << i << "Index " << Diff[i] << " " << *LoadPrototype << '\n';
             auto *NewLoadInst = dyn_cast<LoadInst>(LoadPrototype->clone());
             NewLoadInst->setOperand(0, NewGEPInst);
             NewLoadInst->insertBefore(Parent[ConstantIndices[i]]);
@@ -740,7 +814,8 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
       ++Level;
     }
   }
-  dbgs() << *Pkr->getFunction() << '\n';
+  dbgs() << "Fucntion after makeSymmetricDAG\n"
+         << *Pkr->getFunction() << '\n';
   Pkr->updateFunction(Pkr->getFunction());
   return;
 }
@@ -748,36 +823,40 @@ static void makeSymmetricDAG(const OperandPack* OP, Packer *Pkr)
 static void improvePlan(Packer *Pkr, Plan &P,
                         ArrayRef<const OperandPack *> SeedOperands,
                         CandidatePackSet *Candidates,
-                        DenseSet<BasicBlock *> *BlocksToIgnore) {
+                        DenseSet<BasicBlock *> *BlocksToIgnore)
+{
   SmallVector<const VectorPack *> Seeds;
-  for (Instruction &I : instructions(Pkr->getFunction())) {
+  for (Instruction &I : instructions(Pkr->getFunction()))
+  {
     auto *SI = dyn_cast<StoreInst>(&I);
     // Only pack scalar store
     if (!SI || SI->getValueOperand()->getType()->isVectorTy())
       continue;
-    for (unsigned VL : {2, 4/*, 8, 16, 32, 64*/})
-      for (auto *VP : getSeedMemPacks(Pkr, SI, VL, BlocksToIgnore)) {
+    for (unsigned VL : {2, 4 /*, 8, 16, 32, 64*/})
+      for (auto *VP : getSeedMemPacks(Pkr, SI, VL, BlocksToIgnore))
+      {
         Seeds.push_back(VP);
       }
   }
 
   AccessLayoutInfo &LayoutInfo = Pkr->getStoreInfo();
-  stable_sort(Seeds, [&](const VectorPack *VP1, const VectorPack *VP2) -> bool {
+  stable_sort(Seeds, [&](const VectorPack *VP1, const VectorPack *VP2) -> bool
+              {
     auto *SI1 = cast<StoreInst>(VP1->getOrderedValues().front());
     auto *SI2 = cast<StoreInst>(VP2->getOrderedValues().front());
     unsigned Id1 = LayoutInfo.get(SI1).Id;
     unsigned Id2 = LayoutInfo.get(SI2).Id;
     int NumElems1 = -int(VP1->numElements());
     int NumElems2 = -int(VP2->numElements());
-    return std::tie(Id1, NumElems1) < std::tie(Id2, NumElems2);
-  });
+    return std::tie(Id1, NumElems1) < std::tie(Id2, NumElems2); });
 
   auto &LI = Pkr->getLoopInfo();
   auto *TTI = Pkr->getTTI();
   auto *VPCtx = Pkr->getContext();
   unsigned MaxVecWidth = TTI->getLoadStoreVecRegBitWidth(0);
   // Add loop-reduction packs
-  for (auto &I : instructions(Pkr->getFunction())) {
+  for (auto &I : instructions(Pkr->getFunction()))
+  {
     auto *PN = dyn_cast<PHINode>(&I);
     if (!PN)
       continue;
@@ -787,7 +866,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
     auto *Ty = PN->getType();
     if (!Ty->isIntegerTy() && !Ty->isFloatTy() && !Ty->isIntegerTy())
       continue;
-    if (RI && RI->Elts.size() % 2 == 0) {
+    if (RI && RI->Elts.size() % 2 == 0)
+    {
       unsigned RdxLen = std::min<unsigned>(
           greatestPowerOfTwoDivisor(RI->Elts.size()),
           MaxVecWidth / getBitWidth(PN, Pkr->getDataLayout()));
@@ -801,41 +881,44 @@ static void improvePlan(Packer *Pkr, Plan &P,
     Seeds.append(Candidates->Packs.begin(), Candidates->Packs.end());
 
   dbgs() << "===Store Seeds===\n";
-  for (auto *VP: Seeds)
+  for (auto *VP : Seeds)
   {
     dbgs() << *VP << '\n';
   }
 
   Heuristic H(Pkr, Candidates);
 
-  auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs) -> bool {
+  auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs) -> bool
+  {
     dbgs() << "Ops size is " << OPs.size() << " and Plan P cost is " << P.cost() << '\n';
-    for (auto *OP : OPs) {
+    for (auto *OP : OPs)
+    {
       dbgs() << "===Improving===\n";
       // try to make dag from OP to be symmetric
       makeSymmetricDAG(OP, Pkr);
-      //P2 = Plan(Pkr);
+      // P2 = Plan(Pkr);
       P2.updatePacker(Pkr);
       auto SolvedPacks = H.solve(OP).Packs;
-      //if (!H.solve(OP).Packs.empty())
+      // if (!H.solve(OP).Packs.empty())
       if (!SolvedPacks.empty())
       {
         dbgs() << "solved packs not empty\n";
-        for (auto *VP: SolvedPacks)
+        for (auto *VP : SolvedPacks)
         {
           dbgs() << *VP << '\n';
-          //VP->recompute();
+          // VP->recompute();
         }
         runBottomUpFromOperand(OP, P2, H);
         dbgs() << "Plan P2 after run bottom up from operand\n";
-        for (auto *VP: P2)
+        for (auto *VP : P2)
         {
           dbgs() << *VP << '\n';
         }
       }
       dbgs() << "cost of Plan P2 is " << P2.cost() << '\n';
     }
-    if (P2.cost() < P.cost()) {
+    if (P2.cost() < P.cost())
+    {
       P = P2;
       return true;
     }
@@ -849,26 +932,33 @@ static void improvePlan(Packer *Pkr, Plan &P,
     if (VP->isStore())
       DecomposedStores[VP] = decomposeStorePacks(Pkr, VP);
 
-  auto IsPacked = [&P](auto *V) {
+  auto IsPacked = [&P](auto *V)
+  {
     auto *I = dyn_cast<Instruction>(V);
     return I && P.getProducer(I);
   };
 
-  for (auto *VP : Seeds) {
+  for (auto *VP : Seeds)
+  {
     if (any_of(VP->elementValues(), IsPacked))
       continue;
 
     Plan P2 = P;
 
-    if (VP->isStore()) {
+    if (VP->isStore())
+    {
       for (auto *VP2 : DecomposedStores[VP])
         P2.add(VP2);
-    } else {
+    }
+    else
+    {
       P2.add(VP);
     }
 
-    if (VP->isLoad()) {
-      if (P2.cost() < P.cost()) {
+    if (VP->isLoad())
+    {
+      if (P2.cost() < P.cost())
+      {
         P = P2;
         errs() << "~COST 1: " << P.cost() << '\n';
       }
@@ -880,19 +970,22 @@ static void improvePlan(Packer *Pkr, Plan &P,
 
     dbgs() << "===Seed and Plan===\n";
     dbgs() << *VP << '\n';
-    for (auto *VP: P)
+    for (auto *VP : P)
     {
       dbgs() << *VP << '\n';
     }
   }
 
-  for (auto *OP : SeedOperands) {
+  for (auto *OP : SeedOperands)
+  {
     if (any_of(*OP, IsPacked))
       continue;
     Plan P2 = P;
-    if (Improve(P2, {OP})/* || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
-        Improve(P2, deinterleave(VPCtx, OP, 4)) ||
-        Improve(P2, deinterleave(VPCtx, OP, 8))*/) {
+    if (Improve(P2, {OP}) /* || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
+         Improve(P2, deinterleave(VPCtx, OP, 4)) ||
+         Improve(P2, deinterleave(VPCtx, OP, 8))*/
+    )
+    {
       errs() << "~COST 3: " << P.cost() << '\n';
     }
   }
@@ -903,15 +996,18 @@ static void improvePlan(Packer *Pkr, Plan &P,
     return;
 
   bool Optimized;
-  do {
+  do
+  {
     errs() << "COST 4: " << P.cost() << '\n';
     Optimized = false;
-    for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I) {
+    for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I)
+    {
       const OperandPack *OP = I->first;
       Plan P2 = P;
       if (Improve(P2, {OP}) || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
           Improve(P2, deinterleave(VPCtx, OP, 4)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 8))) {
+          Improve(P2, deinterleave(VPCtx, OP, 8)))
+      {
         Optimized = true;
         break;
       }
@@ -920,13 +1016,16 @@ static void improvePlan(Packer *Pkr, Plan &P,
       continue;
     errs() << "??? finding good concats, num operands = "
            << std::distance(P.operands_begin(), P.operands_end()) << '\n';
-    for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I) {
-      for (auto J = P.operands_begin(); J != E; ++J) {
+    for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I)
+    {
+      for (auto J = P.operands_begin(); J != E; ++J)
+      {
         const OperandPack *OP = I->first;
         const OperandPack *OP2 = J->first;
         auto *Concat = concat(VPCtx, *OP, *OP2);
         Plan P2 = P;
-        if (Improve(P2, {Concat})) {
+        if (Improve(P2, {Concat}))
+        {
           Optimized = true;
           break;
         }
@@ -938,7 +1037,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
     if (Optimized)
       continue;
 
-    for (auto *VP : Seeds) {
+    for (auto *VP : Seeds)
+    {
       Plan P2 = P;
       for (auto *V : VP->elementValues())
         if (auto *VP2 = P2.getProducer(cast<Instruction>(V)))
@@ -948,7 +1048,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
       auto *OP = VP->getOperandPacks().front();
       if (Improve(P2, {OP}) || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
           Improve(P2, deinterleave(VPCtx, OP, 4)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 8))) {
+          Improve(P2, deinterleave(VPCtx, OP, 8)))
+      {
         Optimized = true;
         break;
       }
@@ -956,38 +1057,47 @@ static void improvePlan(Packer *Pkr, Plan &P,
   } while (Optimized);
 }
 
-namespace {
+namespace
+{
 
-template <typename SetTy, typename ElemTy> class EraseOnReturnGuard {
-  SetTy &Set;
-  ElemTy Elem;
+  template <typename SetTy, typename ElemTy>
+  class EraseOnReturnGuard
+  {
+    SetTy &Set;
+    ElemTy Elem;
 
-public:
-  EraseOnReturnGuard(SetTy &Set, ElemTy Elem) : Set(Set), Elem(Elem) {}
-  ~EraseOnReturnGuard() {
-    assert(Set.count(Elem));
-    Set.erase(Elem);
-  }
-};
+  public:
+    EraseOnReturnGuard(SetTy &Set, ElemTy Elem) : Set(Set), Elem(Elem) {}
+    ~EraseOnReturnGuard()
+    {
+      assert(Set.count(Elem));
+      Set.erase(Elem);
+    }
+  };
 
 } // namespace
 
 static bool findLoopDepCycle(
     const EquivalenceClasses<VLoop *> &LoopsToFuse,
     GlobalDependenceAnalysis &DA, const VectorPackContext *VPCtx,
-    const std::map<Instruction *, SmallVector<Instruction *, 8>> &ExtraDepMap) {
+    const std::map<Instruction *, SmallVector<Instruction *, 8>> &ExtraDepMap)
+{
   std::map<VLoop *, BitVector> ExtendedDeps;
-  for (auto It = LoopsToFuse.begin(), E = LoopsToFuse.end(); It != E; ++It) {
+  for (auto It = LoopsToFuse.begin(), E = LoopsToFuse.end(); It != E; ++It)
+  {
     for (auto *VL :
-         make_range(LoopsToFuse.member_begin(It), LoopsToFuse.member_end())) {
+         make_range(LoopsToFuse.member_begin(It), LoopsToFuse.member_end()))
+    {
       // Extend the dependences of VL by taking ExtraDepMap into account
       BitVector Depended = VL->getDepended();
-      for (auto *V : VPCtx->iter_values(VL->getContained())) {
+      for (auto *V : VPCtx->iter_values(VL->getContained()))
+      {
         auto *I = cast<Instruction>(V);
         auto DepIt = ExtraDepMap.find(I);
         if (DepIt == ExtraDepMap.end())
           continue;
-        for (auto *I2 : DepIt->second) {
+        for (auto *I2 : DepIt->second)
+        {
           unsigned DepId = VPCtx->getScalarId(I2);
           // Ignore I2 if it doesn't introduce new inter-loop dependence
           if (Depended.test(DepId) || VL->contains(I2))
@@ -1003,17 +1113,20 @@ static bool findLoopDepCycle(
     }
   }
 
-  for (auto It = LoopsToFuse.begin(), E = LoopsToFuse.end(); It != E; ++It) {
+  for (auto It = LoopsToFuse.begin(), E = LoopsToFuse.end(); It != E; ++It)
+  {
     if (!It->isLeader())
       continue;
     for (auto MemberIt = LoopsToFuse.member_begin(It),
               MemberE = LoopsToFuse.member_end();
-         MemberIt != MemberE; ++MemberIt) {
+         MemberIt != MemberE; ++MemberIt)
+    {
       auto *VL1 = *MemberIt;
       auto &VL1Deps = ExtendedDeps[VL1];
       auto &VL1Members = VL1->getContained();
       for (auto MemberIt2 = std::next(MemberIt); MemberIt2 != MemberE;
-           ++MemberIt2) {
+           ++MemberIt2)
+      {
         auto *VL2 = *MemberIt2;
         if (VL1Deps.anyCommon(VL2->getContained()))
           return true;
@@ -1030,13 +1143,15 @@ static bool findDepCycleInLoop(
     VLoop *VL, const DenseMap<Value *, const VectorPack *> &ValueToPackMap,
     const EquivalenceClasses<VLoop *> &LoopsToFuse,
     const std::map<Instruction *, SmallVector<Instruction *, 8>> &ExtraDepMap,
-    GlobalDependenceAnalysis &DA, const VectorPackContext *VPCtx, Packer *Pkr) {
+    GlobalDependenceAnalysis &DA, const VectorPackContext *VPCtx, Packer *Pkr)
+{
   // Use DFS to discover dependence cycle
   using NodeTy = PointerUnion<Value *, const VectorPack *,
                               const ControlCondition *, VLoop *>;
   DenseSet<NodeTy> Processing, Visited;
 
-  auto GetLeaderVL = [&LoopsToFuse](VLoop *VL) {
+  auto GetLeaderVL = [&LoopsToFuse](VLoop *VL)
+  {
     auto It = LoopsToFuse.findValue(VL);
     if (It != LoopsToFuse.end())
       return LoopsToFuse.getLeaderValue(VL);
@@ -1049,7 +1164,8 @@ static bool findDepCycleInLoop(
   else
     FusedLoops.push_back(VL);
 
-  std::function<bool(NodeTy)> FindCycle = [&](NodeTy Node) -> bool {
+  std::function<bool(NodeTy)> FindCycle = [&](NodeTy Node) -> bool
+  {
     if (!Processing.insert(Node).second)
       return true;
     EraseOnReturnGuard<decltype(Processing), NodeTy> EraseOnReturn(Processing,
@@ -1058,7 +1174,8 @@ static bool findDepCycleInLoop(
     if (!Visited.insert(Node).second)
       return false;
 
-    if (auto *V = Node.dyn_cast<Value *>()) {
+    if (auto *V = Node.dyn_cast<Value *>())
+    {
       auto *I = dyn_cast<Instruction>(V);
       if (!I)
         return false;
@@ -1067,7 +1184,9 @@ static bool findDepCycleInLoop(
       // (instead of processing the dep of I individually)
       auto *VLOfI = Pkr->getVLoopFor(I);
       if (any_of(FusedLoops,
-                 [VLOfI](VLoop *CoVL) { return CoVL->contains(VLOfI); })) {
+                 [VLOfI](VLoop *CoVL)
+                 { return CoVL->contains(VLOfI); }))
+      {
         return FindCycle(GetLeaderVL(VLOfI));
       }
 
@@ -1075,12 +1194,14 @@ static bool findDepCycleInLoop(
       // the instruction must be from a parent loop of VL and is not our
       // concern.
       if (VL->isLoop() &&
-          none_of(FusedLoops, [I](VLoop *CoVL) { return CoVL->contains(I); }))
+          none_of(FusedLoops, [I](VLoop *CoVL)
+                  { return CoVL->contains(I); }))
         return false;
 
       // If this instruction is packed, need to check the pack as a whole
       auto *VP = ValueToPackMap.lookup(V);
-      if (VP) {
+      if (VP)
+      {
         return FindCycle(VP);
       }
 
@@ -1094,7 +1215,8 @@ static bool findDepCycleInLoop(
 
       auto *PN = dyn_cast<PHINode>(I);
       auto *VLI = Pkr->getVLoopFor(I);
-      if (PN && VLI->isGatedPhi(PN)) {
+      if (PN && VLI->isGatedPhi(PN))
+      {
         for (unsigned i = 0; i < PN->getNumIncomingValues(); i++)
           if (FindCycle(VLI->getIncomingPhiCondition(PN, i)))
             return true;
@@ -1104,12 +1226,14 @@ static bool findDepCycleInLoop(
       return I && FindCycle(Pkr->getVLoopFor(I)->getInstCond(I));
     }
 
-    if (auto *VP = Node.dyn_cast<const VectorPack *>()) {
+    if (auto *VP = Node.dyn_cast<const VectorPack *>())
+    {
       // Data dep.
       if (any_of(VP->dependedValues(), FindCycle))
         return true;
       // Control dep.
-      for (auto *V : VP->elementValues()) {
+      for (auto *V : VP->elementValues())
+      {
         auto *I = dyn_cast<Instruction>(V);
         if (!I)
           continue;
@@ -1120,7 +1244,8 @@ static bool findDepCycleInLoop(
           return true;
         auto *PN = dyn_cast<PHINode>(V);
         auto *VLI = Pkr->getVLoopFor(I);
-        if (PN && VLI->isGatedPhi(PN)) {
+        if (PN && VLI->isGatedPhi(PN))
+        {
           for (unsigned i = 0; i < PN->getNumIncomingValues(); i++)
             if (FindCycle(VLI->getIncomingPhiCondition(PN, i)))
               return true;
@@ -1129,9 +1254,11 @@ static bool findDepCycleInLoop(
       return false;
     }
 
-    if (auto *SubVL = Node.dyn_cast<VLoop *>()) {
+    if (auto *SubVL = Node.dyn_cast<VLoop *>())
+    {
       auto It = LoopsToFuse.findValue(SubVL);
-      if (It == LoopsToFuse.end()) {
+      if (It == LoopsToFuse.end())
+      {
         return FindCycle(SubVL->getLoopCond()) ||
                any_of(VPCtx->iter_values(SubVL->getDepended()), FindCycle);
       }
@@ -1168,14 +1295,16 @@ static bool findDepCycleInLoop(
 // have dep cycle Make sure a set of packs have neither data nor control
 // dependence
 bool findDepCycle(ArrayRef<const VectorPack *> Packs, Packer *Pkr,
-                  ArrayRef<std::pair<Instruction *, Instruction *>> ExtraDeps) {
+                  ArrayRef<std::pair<Instruction *, Instruction *>> ExtraDeps)
+{
   GlobalDependenceAnalysis &DA = Pkr->getDA();
   ControlDependenceAnalysis &CDA = Pkr->getCDA();
   auto *VPCtx = Pkr->getContext();
 
   // Mapping instruction -> extra deps
   std::map<Instruction *, SmallVector<Instruction *, 8>> ExtraDepMap;
-  for (auto &Dep : ExtraDeps) {
+  for (auto &Dep : ExtraDeps)
+  {
     Instruction *I, *Depended;
     std::tie(Depended, I) = Dep;
     ExtraDepMap[I].push_back(Depended);
@@ -1190,7 +1319,8 @@ bool findDepCycle(ArrayRef<const VectorPack *> Packs, Packer *Pkr,
   // Figure out the loops that we need to fuse (or co-iterate)
   EquivalenceClasses<VLoop *> LoopsToFuse;
   std::function<void(VLoop *, VLoop *)> MarkLoopsToFuse = [&](VLoop *VL1,
-                                                              VLoop *VL2) {
+                                                              VLoop *VL2)
+  {
     if (VL1 || VL1 == VL2)
       return;
 
@@ -1199,7 +1329,8 @@ bool findDepCycle(ArrayRef<const VectorPack *> Packs, Packer *Pkr,
     LoopsToFuse.unionSets(VL1, VL2);
     MarkLoopsToFuse(VL1->getParent(), VL2->getParent());
   };
-  for (auto *VP : Packs) {
+  for (auto *VP : Packs)
+  {
     auto *VL =
         Pkr->getVLoopFor(cast<Instruction>(*VP->elementValues().begin()));
     for (auto *V : drop_begin(VP->elementValues()))
@@ -1217,7 +1348,8 @@ bool findDepCycle(ArrayRef<const VectorPack *> Packs, Packer *Pkr,
     return true;
   auto &VLI = Pkr->getVLoopInfo();
   SmallPtrSet<VLoop *, 8> Checked;
-  for (auto *L : Pkr->getLoopInfo().getLoopsInPreorder()) {
+  for (auto *L : Pkr->getLoopInfo().getLoopsInPreorder())
+  {
     auto *VL = VLI.getVLoop(L);
     auto It = LoopsToFuse.findValue(VL);
     if (It != LoopsToFuse.end())
@@ -1233,7 +1365,8 @@ bool findDepCycle(ArrayRef<const VectorPack *> Packs, Packer *Pkr,
 
 float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
                        ArrayRef<const OperandPack *> SeedOperands,
-                       DenseSet<BasicBlock *> *BlocksToIgnore) {
+                       DenseSet<BasicBlock *> *BlocksToIgnore)
+{
   CandidatePackSet Candidates;
   // Candidates.Packs = enumerate(Pkr, BlocksToIgnore);
   auto *VPCtx = Pkr->getContext();
@@ -1244,18 +1377,19 @@ float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
   Plan P(Pkr);
   float ScalarCost = P.cost();
   dbgs() << "===Vector Pack before improvePlan===\n";
-  for (auto *VP: P)
+  for (auto *VP : P)
   {
     dbgs() << *VP << '\n';
   }
   improvePlan(Pkr, P, SeedOperands, &Candidates, BlocksToIgnore);
   Packs.insert(Packs.end(), P.begin(), P.end());
   dbgs() << "===Vector Pack after improvePlan===\n";
-  for (auto *VP: Packs)
+  for (auto *VP : Packs)
   {
     dbgs() << *VP << '\n';
   }
-  if (findDepCycle(Packs, Pkr)) {
+  if (findDepCycle(Packs, Pkr))
+  {
     errs() << "Aborting due to dependence cycle\n";
     Packs.clear();
     return ScalarCost;
@@ -1264,15 +1398,17 @@ float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
 }
 
 float optimizeBottomUp(VectorPackSet &PackSet, Packer *Pkr,
-                       ArrayRef<const OperandPack *> SeedOperands) {
+                       ArrayRef<const OperandPack *> SeedOperands)
+{
   std::vector<const VectorPack *> Packs;
   float Cost = optimizeBottomUp(Packs, Pkr, SeedOperands);
   for (auto *VP : Packs)
   {
-    if(!PackSet.tryAdd(VP))
+    if (!PackSet.tryAdd(VP))
     {
-      dbgs() << "try add failed with \n" << *VP << '\n';
-      //PackSet.add(VP);
+      dbgs() << "try add failed with \n"
+             << *VP << '\n';
+      // PackSet.add(VP);
     }
   }
   dbgs() << "All packs added\n";
