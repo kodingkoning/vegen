@@ -492,11 +492,13 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     llvm::Type *SrcTy;
     llvm::CastInst *CastPrototype;
     dbgs() << "Level " << Level << '\n'
-           << "Worklist: \n";
+           << "Worklist:\n";
     for (auto *V : Worklist)
     {
       dbgs() << *V << "\n";
     }
+    if (Worklist.empty())
+      break;
     for (auto *V : Worklist)
     {
       if (isa<PHINode>(V))
@@ -573,57 +575,66 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
       std::vector<Instruction *> NewParent;
       std::vector<int> NewOperandIdx;
       // for (auto *V: Worklist)
+      Instruction *Prototype = nullptr;
+      for (auto *V : Worklist)
+      {
+        if (auto *B = dyn_cast<BinaryOperator>(V))
+        {
+          if (!isa<Constant>(B->getOperand(0)) && !isa<Constant>(B->getOperand(1)))
+          {
+            Prototype = B;
+            break;
+          }
+        }
+      }
       for (int j = 0; j < Worklist.size(); ++j)
       {
         auto *V = Worklist[j];
         if (auto *I = dyn_cast<Instruction>(V))
         {
           // swap the order of operands of binary operator if the arrays loaded are unmatched
-          if (I->isCommutative())
-          {
-            break; // since all instructions are the same
-          }
           if (auto *B = dyn_cast<BinaryOperator>(I))
           {
-            int NonConst = -1;
-            if (isa<Constant>(B->getOperand(0)))
+            if (I->isCommutative())
             {
-              NonConst = 1;
-            }
-            else if (isa<Constant>(B->getOperand(1)))
-            {
-              NonConst = 0;
-            }
-            dbgs() << "NonConst " << NonConst << '\n';
-            if (NonConst >= 0)
-            {
-              auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
-              Instruction *I2 = nullptr;
-              BinaryOperator *P = nullptr;
-              // if (Level == 0)
-              //{
-              //   I2 = dyn_cast<Instruction>(Parent.front()->getOperand(NonConst));
-              // }
-              // else
-              //{
-              if (Level > 0)
-                P = dyn_cast<BinaryOperator>(Parent[j]);
-              if (P)
+              int NonConst = 0;
+              if (isa<Constant>(B->getOperand(0)))
               {
-                I2 = dyn_cast<Instruction>(cast<Instruction>(P->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+                NonConst = 1;
               }
-              else
+              else if (isa<Constant>(B->getOperand(1)))
               {
-                I2 = dyn_cast<Instruction>(cast<Instruction>(Worklist.front())->getOperand(NonConst));
+                NonConst = 0;
               }
-              //}
-              // dbgs() << "before findloadarr" << *I2 << '\n' << *I1 << '\n';
-              if (!I2 && I2 != I1)
+              dbgs() << "NonConst " << NonConst << '\n';
+              //if (NonConst >= 0)
+              if (Prototype)
               {
-                auto *LoadI1 = findLoadArr(I1, MaxLevel);
-                auto *LoadI2 = findLoadArr(I2, MaxLevel);
-                if (LoadI1 || LoadI2 && (LoadI1 != LoadI2))
-                  B->swapOperands();
+                auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
+                Instruction *I2 = nullptr;
+                BinaryOperator *P = nullptr;
+                if (Level > 0)
+                  P = dyn_cast<BinaryOperator>(Parent[j]);
+                if (P)
+                {
+                  I2 = dyn_cast<Instruction>(cast<Instruction>(P->getOperand(1 - OperandIdx[j]))->getOperand(NonConst));
+                }
+                else
+                {
+                  I2 = dyn_cast<Instruction>(Prototype->getOperand(NonConst));
+                }
+                if (I1 && I2)
+                  dbgs() << "before findloadarr" << *I2 << '\n'
+                         << *I1 << '\n';
+                if (I2 && I2 != I1)
+                {
+                  auto *LoadI1 = findLoadArr(I1, MaxLevel);
+                  auto *LoadI2 = findLoadArr(I2, MaxLevel);
+                  dbgs() << "LoadArr" << *LoadI2 << '\n'
+                         << *LoadI1 << '\n';
+                  if ((LoadI1 || LoadI2) && (LoadI1 != LoadI2))
+                    B->swapOperands();
+                }
               }
             }
           }
@@ -804,7 +815,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
             auto *NewLoadInst = dyn_cast<LoadInst>(LoadPrototype->clone());
             NewLoadInst->setOperand(0, NewGEPInst);
             NewLoadInst->insertBefore(Parent[ConstantIndices[i]]);
-            Parent[ConstantIndices[i]]->setOperand(0, NewLoadInst);
+            Parent[ConstantIndices[i]]->setOperand(OperandIdx[ConstantIndices[i]], NewLoadInst);
             NewGEPInst->insertBefore(NewLoadInst);
           }
         }
