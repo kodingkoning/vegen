@@ -500,6 +500,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     llvm::Type *DestTy;
     llvm::Type *SrcTy;
     llvm::CastInst *CastPrototype;
+    bool NeedUpdate = false;
     dbgs() << "Level " << Level << '\n'
            << "Worklist:\n";
     for (auto *V : Worklist)
@@ -694,6 +695,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
           // NewWorklist.push_back(V);
           NewParent.push_back(NewInst);
           NewOperandIdx.push_back(0);
+          NeedUpdate = true;
         }
         else
         {
@@ -840,6 +842,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
           }
         }
         Pkr->ConstantReplaceds[BLoads.front()] = ConstantReplaced;
+        NeedUpdate = true;
         break;
       }
       ++Level;
@@ -847,7 +850,12 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
   }
   dbgs() << "Fucntion after makeSymmetricDAG\n"
          << *Pkr->getFunction() << '\n';
-  Pkr->updateFunction(Pkr->getFunction());
+  if (NeedUpdate)
+  {
+    dbgs() << "Packer should be updated\n";
+    Pkr->updateFunction(Pkr->getFunction());
+  }
+
   return;
 }
 
