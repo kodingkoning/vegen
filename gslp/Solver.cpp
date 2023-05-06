@@ -477,6 +477,13 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
   }
   if (Worklist.empty())
     return;
+  for (auto *V : Worklist)
+  {
+    if (V)
+      dbgs() << *V << "\n";
+    else
+      dbgs() << "Value is null\n";
+  }
   auto &Context = Pkr->getFunction()->getContext();
   // DenseMap<Value*, Instruction*> OperandParent;
   while (Level <= MaxLevel)
@@ -676,7 +683,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
             NewWorklist.push_back(ConstantFP::get(SrcTy, C->getValue().convertToDouble()));
           }
           auto *InsertPoint = dyn_cast<Instruction>(Parent[i]);
-          CastInst* NewInst;
+          CastInst *NewInst;
           if (isa<ConstantInt>(V) || isa<ConstantFP>(V))
             NewInst = llvm::CastInst::Create(CastPrototype->getOpcode(), NewWorklist.back(), DestTy, "", InsertPoint);
           else
