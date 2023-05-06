@@ -607,7 +607,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
                 NonConst = 0;
               }
               dbgs() << "NonConst " << NonConst << '\n';
-              //if (NonConst >= 0)
+              // if (NonConst >= 0)
               if (Prototype)
               {
                 auto *I1 = dyn_cast<Instruction>(I->getOperand(NonConst));
@@ -630,8 +630,12 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
                 {
                   auto *LoadI1 = findLoadArr(I1, MaxLevel);
                   auto *LoadI2 = findLoadArr(I2, MaxLevel);
-                  dbgs() << "LoadArr" << *LoadI2 << '\n'
-                         << *LoadI1 << '\n';
+                  if (LoadI2 && LoadI1)
+                  {
+                    dbgs() << "LoadArr" << *LoadI2 << '\n'
+                           << *LoadI1 << '\n';
+                  }
+
                   if ((LoadI1 || LoadI2) && (LoadI1 != LoadI2))
                     B->swapOperands();
                 }
