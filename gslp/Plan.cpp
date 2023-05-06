@@ -32,7 +32,11 @@ void Plan::updatePacker(Packer *Pkr)
   {
     if (!NumScalarUses.count(&I))
     {
-      NumScalarUses[&I] = I.getNumUses();
+      auto NumUses = I.getNumUses();
+      if (NumUses == 0)
+        NumScalarUses[&I] = 1; // since the use of newly added instrcution is not updated
+      else
+        NumScalarUses[&I] = NumUses;
       if (isAlive(&I))
         Cost += Pkr->getScalarCost(&I);
     }
