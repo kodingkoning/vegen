@@ -479,10 +479,12 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     return;
   for (auto *V : Worklist)
   {
-    if (V)
-      dbgs() << *V << "\n";
-    else
-      dbgs() << "Value is null\n";
+    // if (V)
+    //   dbgs() << *V << "\n";
+    // else
+    //   dbgs() << "Value is null\n";
+    if (!V)
+      return;
   }
   auto &Context = Pkr->getFunction()->getContext();
   // DenseMap<Value*, Instruction*> OperandParent;
