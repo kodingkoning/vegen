@@ -217,8 +217,15 @@ void Plan::kill(Instruction *I)
 
 void Plan::decScalarUses(Instruction *I)
 {
-  assert(NumScalarUses[I] > 0);
-  --NumScalarUses[I];
+  if (NumScalarUses[i] == 0)
+  {
+    dbgs() << "Scalar Uses is 0" << *I << '\n';
+  }
+  else
+  {
+    assert(NumScalarUses[I] > 0);
+    --NumScalarUses[I];
+  }
 
   // There's no scalar uses anymore, so deduct the extraction cost
   if (!NumScalarUses[I] && ExtractCosts.count(I))
