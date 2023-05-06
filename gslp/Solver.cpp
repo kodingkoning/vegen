@@ -460,7 +460,7 @@ static Value *findLoadArr(Instruction *I, int Depth)
   return V;
 }
 
-static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
+static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
 {
   // TODO: compute the cost of making it symmetric
   // dbgs() << "===make symmetric dag===\n";
@@ -475,6 +475,14 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
   for (auto *V : *OP)
   {
     Worklist.push_back(V);
+  }
+  for (auto *V : VP->getOrderedValues())
+  {
+    if (auto *I = dyn_cast<Instruction>(V))
+    {
+      Parent.push_back(I);
+      OperandIdx.push_back(0); // idx is 0 for both load and store
+    }
   }
   if (Worklist.empty())
     return NeedUpdate;
@@ -928,17 +936,20 @@ static void improvePlan(Packer *Pkr, Plan &P,
 
   Heuristic H(Pkr, Candidates);
 
-  auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs) -> bool
+  auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs, VectorPack *VP) -> bool
   {
     dbgs() << "Ops size is " << OPs.size() << " and Plan P cost is " << P.cost() << '\n';
     for (auto *OP : OPs)
     {
       dbgs() << "===Improving===\n";
       // try to make dag from OP to be symmetric
-      bool NeedUpdate = makeSymmetricDAG(OP, Pkr);
-      // P2 = Plan(Pkr);
-      if (NeedUpdate)
-        P2.updatePacker(Pkr);
+      if (VP)
+      {
+        bool NeedUpdate = makeSymmetricDAG(OP, Pkr, VP);
+        // P2 = Plan(Pkr);
+        if (NeedUpdate)
+          P2.updatePacker(Pkr);
+      }
       auto SolvedPacks = H.solve(OP).Packs;
       // if (!H.solve(OP).Packs.empty())
       if (!SolvedPacks.empty())
@@ -1006,7 +1017,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
       continue;
     }
 
-    if (Improve(P2, VP->getOperandPacks()))
+    if (Improve(P2, VP->getOperandPacks(), const_cast<VectorPack*>(VP)))
       errs() << "~COST 2: " << P.cost() << '\n';
 
     dbgs() << "===Seed and Plan===\n";
@@ -1022,7 +1033,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
     if (any_of(*OP, IsPacked))
       continue;
     Plan P2 = P;
-    if (Improve(P2, {OP}) /* || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
+    if (Improve(P2, {OP}, nullptr) /* || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
          Improve(P2, deinterleave(VPCtx, OP, 4)) ||
          Improve(P2, deinterleave(VPCtx, OP, 8))*/
     )
@@ -1045,9 +1056,9 @@ static void improvePlan(Packer *Pkr, Plan &P,
     {
       const OperandPack *OP = I->first;
       Plan P2 = P;
-      if (Improve(P2, {OP}) || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 4)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 8)))
+      if (Improve(P2, {OP}, nullptr) || Improve(P2, deinterleave(VPCtx, OP, 2), nullptr) ||
+          Improve(P2, deinterleave(VPCtx, OP, 4), nullptr) ||
+          Improve(P2, deinterleave(VPCtx, OP, 8), nullptr))
       {
         Optimized = true;
         break;
@@ -1065,7 +1076,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
         const OperandPack *OP2 = J->first;
         auto *Concat = concat(VPCtx, *OP, *OP2);
         Plan P2 = P;
-        if (Improve(P2, {Concat}))
+        if (Improve(P2, {Concat}, nullptr))
         {
           Optimized = true;
           break;
@@ -1087,9 +1098,9 @@ static void improvePlan(Packer *Pkr, Plan &P,
       for (auto *VP2 : DecomposedStores[VP])
         P2.add(VP2);
       auto *OP = VP->getOperandPacks().front();
-      if (Improve(P2, {OP}) || Improve(P2, deinterleave(VPCtx, OP, 2)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 4)) ||
-          Improve(P2, deinterleave(VPCtx, OP, 8)))
+      if (Improve(P2, {OP}, nullptr) || Improve(P2, deinterleave(VPCtx, OP, 2), nullptr) ||
+          Improve(P2, deinterleave(VPCtx, OP, 4), nullptr) ||
+          Improve(P2, deinterleave(VPCtx, OP, 8), nullptr))
       {
         Optimized = true;
         break;
