@@ -744,6 +744,8 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
             ConstantIndices.push_back(i);
           }
         }
+        if (!ArrA || !ArrB)
+          break;
         bool Shorter = ALoads.size() > BLoads.size();
         if (!Shorter) // always make A longer
         {
