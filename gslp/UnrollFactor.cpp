@@ -26,6 +26,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "UnrollFactor"
+
 static cl::opt<bool> ForwardSeeds("forward-seeds",
                                   cl::desc("Forward seeds from the unroller"),
                                   cl::init(false));
@@ -258,12 +260,12 @@ getSeeds(Packer &Pkr, DenseMap<Loop *, UnrolledLoopTy> &DupToOrigLoopMap,
     }
   }
   // debug output
-  errs() << "print Seed operands\n";
+  LLVM_DEBUG(errs() << "print Seed operands\n");
   for (auto* seed: SeedOperands)
   {
     for (auto* v: *seed)
     {
-      errs() << *v; // print llvm value of seed
+      LLVM_DEBUG(errs() << *v); // print llvm value of seed
     }
   }
   return SeedOperands;
@@ -372,7 +374,7 @@ static void refineUnrollFactors(Function *F, DominatorTree &DT, LoopInfo &LI,
     if (!OrigLoops.count(L))
       continue;
     UFs[L] = PowerOf2Ceil(UFs[L]) * divideCeil(4, NumRdxs);
-    errs() << "Adjusted uf = " << UFs[L] << '\n';
+    LLVM_DEBUG(errs() << "Adjusted uf = " << UFs[L] << '\n');
   }
 
   for (auto &Pair : UFs)
@@ -429,7 +431,7 @@ void computeUnrollFactor(ArrayRef<const InstBinding *> Insts,
                          LazyValueInfo *LVI, TargetTransformInfo *TTI,
                          BlockFrequencyInfo *BFI, Function *F,
                          const LoopInfo &LI, DenseMap<Loop *, unsigned> &UFs) {
-  errs() << "Compute Unroll Factor\n";
+  LLVM_DEBUG(errs() << "Compute Unroll Factor\n");
   DenseSet<Loop *> UnrolledLoops;
   for (auto *L : const_cast<LoopInfo &>(LI).getLoopsInPreorder()) {
     if (any_of(UnrolledLoops, [L](Loop *UnrolledL) { return UnrolledL->contains(L); })) {
@@ -438,8 +440,8 @@ void computeUnrollFactor(ArrayRef<const InstBinding *> Insts,
     }
     UFs[L] = 8;
     computeUnrollFactorImpl(Insts, LVI, TTI, BFI, F, LI, UFs);
-    errs() << "Unroll factor for loop " << L << "(depth=" << L->getLoopDepth()
-      << ')' << " " << UFs.lookup(L) << '\n';
+    LLVM_DEBUG(errs() << "Unroll factor for loop " << L << "(depth=" << L->getLoopDepth()
+      << ')' << " " << UFs.lookup(L) << '\n');
     if (UFs[L] > 1) {
       UnrolledLoops.insert(L);
       break;
@@ -449,10 +451,10 @@ void computeUnrollFactor(ArrayRef<const InstBinding *> Insts,
     if (!UnrolledLoops.count(KV.first))
       KV.second = 0;
   }
-  errs() << "========= final unroll plan ========\n";
+  LLVM_DEBUG(errs() << "========= final unroll plan ========\n");
   for (auto *L : const_cast<LoopInfo &>(LI).getLoopsInPreorder()) {
-    errs() << "Unroll factor for loop " << L << "(depth=" << L->getLoopDepth()
-           << ')' << " " << UFs.lookup(L) << '\n';
+    LLVM_DEBUG(errs() << "Unroll factor for loop " << L << "(depth=" << L->getLoopDepth()
+           << ')' << " " << UFs.lookup(L) << '\n');
   }
-  errs() << *F << '\n';
+  LLVM_DEBUG(errs() << *F << '\n');
 }

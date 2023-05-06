@@ -71,7 +71,7 @@ Heuristic::Solution Heuristic::solve(const OperandPack *OP) {
   // The baseline solution is building the vector by implicit insertion
   Solution Sol(Cost);
   LLVM_DEBUG(dbgs() << "Scalar cost of " << *OP << " = " << Cost << '\n');
-  dbgs() << "Scalar cost of " << *OP << " = " << Cost << '\n';
+  LLVM_DEBUG(dbgs() << "Scalar cost of " << *OP << " = " << Cost << '\n');
   if (Cost == 0) {
     Solutions[OP] = Sol;
     return Sol;
@@ -88,13 +88,13 @@ Heuristic::Solution Heuristic::solve(const OperandPack *OP) {
   const OperandPack *Deduped = VPCtx->dedup(OP);
   float ExtraCost = Deduped != OP ? C_Shuffle : 0;
   auto OPI = Pkr->getProducerInfo(Deduped);
-  dbgs() << "===Producer Info===\n";
+  LLVM_DEBUG(dbgs() << "===Producer Info===\n");
   // TODO: Rewrite the solve
   for (auto *VP : OPI.getProducers()) {
-    dbgs() << "===OperandPack for VP===\n";
-    dbgs() << "VP: " << *VP << '\n';
+    LLVM_DEBUG(dbgs() << "===OperandPack for VP===\n");
+    LLVM_DEBUG(dbgs() << "VP: " << *VP << '\n');
     for (auto *OP : VP->getOperandPacks()) {
-      dbgs() << *OP << '\n';
+      LLVM_DEBUG(dbgs() << *OP << '\n');
     }
     Sol.update(Solution(getCost(VP) + ExtraCost, VP));
 
