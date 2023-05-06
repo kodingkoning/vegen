@@ -506,6 +506,14 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
         AllSame = false;
         break;
       }
+      if (auto *S = dyn_cast<CastInst>(V))
+      {
+        HasCastInst = true;
+        CastPrototype = S;
+        DestTy = S->getDestTy();
+        SrcTy = S->getSrcTy();
+        continue;
+      }
       if (auto *I = dyn_cast<Instruction>(V))
       {
         if (Opcode == -1)
@@ -529,13 +537,6 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
       if (isa<Constant>(V))
       {
         HasConstant = true;
-      }
-      if (auto *S = dyn_cast<CastInst>(V))
-      {
-        HasCastInst = true;
-        CastPrototype = S;
-        DestTy = S->getDestTy();
-        SrcTy = S->getSrcTy();
       }
     }
     if (!AllSame)
@@ -666,9 +667,6 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
         auto *V = Worklist[i];
         if (!isa<CastInst>(V))
         {
-          auto *InsertPoint = dyn_cast<Instruction>(Parent[i]);
-          auto *NewInst = llvm::CastInst::Create(CastPrototype->getOpcode(), nullptr, DestTy, "", InsertPoint);
-          Parent[i]->setOperand(OperandIdx[i], NewInst);
           if (auto *C = dyn_cast<ConstantInt>(V))
           {
             NewWorklist.push_back(ConstantInt::get(dyn_cast<IntegerType>(SrcTy), C->getValue().getSExtValue(), true));
@@ -677,6 +675,13 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
           {
             NewWorklist.push_back(ConstantFP::get(SrcTy, C->getValue().convertToDouble()));
           }
+          auto *InsertPoint = dyn_cast<Instruction>(Parent[i]);
+          CastInst* NewInst;
+          if (isa<ConstantInt>(V) || isa<ConstantFP>(V))
+            NewInst = llvm::CastInst::Create(CastPrototype->getOpcode(), NewWorklist.back(), DestTy, "", InsertPoint);
+          else
+            NewInst = llvm::CastInst::Create(CastPrototype->getOpcode(), V, DestTy, "", InsertPoint);
+          Parent[i]->setOperand(OperandIdx[i], NewInst);
           // NewWorklist.push_back(V);
           NewParent.push_back(NewInst);
           NewOperandIdx.push_back(0);
