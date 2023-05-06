@@ -460,7 +460,7 @@ static Value *findLoadArr(Instruction *I, int Depth)
   return V;
 }
 
-static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
+static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
 {
   // TODO: compute the cost of making it symmetric
   // dbgs() << "===make symmetric dag===\n";
@@ -471,12 +471,13 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
   std::vector<Value *> Worklist;
   std::vector<Instruction *> Parent;
   std::vector<int> OperandIdx;
+  bool NeedUpdate = false;
   for (auto *V : *OP)
   {
     Worklist.push_back(V);
   }
   if (Worklist.empty())
-    return;
+    return NeedUpdate;
   for (auto *V : Worklist)
   {
     // if (V)
@@ -484,8 +485,9 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     // else
     //   dbgs() << "Value is null\n";
     if (!V)
-      return;
+      return NeedUpdate;
   }
+
   auto &Context = Pkr->getFunction()->getContext();
   // DenseMap<Value*, Instruction*> OperandParent;
   while (Level <= MaxLevel)
@@ -500,7 +502,6 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     llvm::Type *DestTy;
     llvm::Type *SrcTy;
     llvm::CastInst *CastPrototype;
-    bool NeedUpdate = false;
     dbgs() << "Level " << Level << '\n'
            << "Worklist:\n";
     for (auto *V : Worklist)
@@ -856,7 +857,7 @@ static void makeSymmetricDAG(const OperandPack *OP, Packer *Pkr)
     Pkr->updateFunction(Pkr->getFunction());
   }
 
-  return;
+  return NeedUpdate;
 }
 
 static void improvePlan(Packer *Pkr, Plan &P,
@@ -934,9 +935,10 @@ static void improvePlan(Packer *Pkr, Plan &P,
     {
       dbgs() << "===Improving===\n";
       // try to make dag from OP to be symmetric
-      makeSymmetricDAG(OP, Pkr);
+      bool NeedUpdate = makeSymmetricDAG(OP, Pkr);
       // P2 = Plan(Pkr);
-      P2.updatePacker(Pkr);
+      if (NeedUpdate)
+        P2.updatePacker(Pkr);
       auto SolvedPacks = H.solve(OP).Packs;
       // if (!H.solve(OP).Packs.empty())
       if (!SolvedPacks.empty())
