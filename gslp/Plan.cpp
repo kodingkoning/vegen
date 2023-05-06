@@ -315,7 +315,10 @@ void Plan::removeImpl(const VectorPack *VP) {
         // extract cost One exception is "Reduction pack" which produces a
         // single scalar that we never extract
         if (!VP->isReduction() && NumUses) {
+          if (!ExtractCosts.count(I))
+            dbgs() << "not exist in the extractCosts " << *I << '\n';
           assert(ExtractCosts.count(I));
+
           Cost -= ExtractCosts[I];
           ExtractCosts.erase(I);
         }
