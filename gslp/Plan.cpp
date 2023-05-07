@@ -217,7 +217,7 @@ void Plan::kill(Instruction *I)
 
 void Plan::decScalarUses(Instruction *I)
 {
-  if (NumScalarUses[i] == 0)
+  if (NumScalarUses[I] == 0)
   {
     dbgs() << "Scalar Uses is 0" << *I << '\n';
   }
