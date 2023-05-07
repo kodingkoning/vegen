@@ -14,6 +14,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "Solver"
+
 static cl::opt<bool>
     RefinePlans("refine-plans",
                 cl::desc("Refine the initial vectorization plan"),
@@ -181,7 +183,7 @@ void runBottomUpFromOperand(
         GetExtraOperands)
 {
   // Plan Best = P;
-  dbgs() << "runBottomUpFromOperand\n";
+  LLVM_DEBUG(dbgs() << "runBottomUpFromOperand\n");
   SmallVector<const OperandPack *> Worklist;
   // std::deque<const OperandPack*> Worklist;
   Worklist.push_back(OP);
@@ -465,8 +467,8 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
   // TODO: compute the cost of making it symmetric
   // dbgs() << "===make symmetric dag===\n";
   constexpr int MaxLevel = 3;
-  dbgs() << "Function before makeSymmetricDAG\n";
-  dbgs() << *Pkr->getFunction() << '\n';
+  LLVM_DEBUG(dbgs() << "Function before makeSymmetricDAG\n");
+  LLVM_DEBUG(dbgs() << *Pkr->getFunction() << '\n');
   int Level = 0;
   std::vector<Value *> Worklist;
   std::vector<Instruction *> Parent;
@@ -510,11 +512,11 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
     llvm::Type *DestTy;
     llvm::Type *SrcTy;
     llvm::CastInst *CastPrototype;
-    dbgs() << "Level " << Level << '\n'
-           << "Worklist:\n";
+    LLVM_DEBUG(dbgs() << "Level " << Level << '\n'
+           << "Worklist:\n");
     for (auto *V : Worklist)
     {
-      dbgs() << *V << "\n";
+      LLVM_DEBUG(dbgs() << *V << "\n");
     }
     if (Worklist.empty())
       break;
@@ -564,7 +566,7 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
     }
     /*if (Level == 0) // parent needs to set for level 0
     {
-      // dbgs() << "set parent for level 0\n";
+      // LLVM_DEBUG(dbgs() << "set parent for level 0\n");
       for (auto *V : Worklist)
       {
         if (auto *I = dyn_cast<Instruction>(V))
@@ -590,7 +592,7 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
     // if (AllSame && !HasConstant)
     if (!HasConstant)
     {
-      dbgs() << "===Allsame===\n";
+      LLVM_DEBUG(dbgs() << "===Allsame===\n");
       std::vector<Value *> NewWorklist;
       std::vector<Instruction *> NewParent;
       std::vector<int> NewOperandIdx;
@@ -626,7 +628,7 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
               {
                 NonConst = 0;
               }
-              dbgs() << "NonConst " << NonConst << '\n';
+              LLVM_DEBUG(dbgs() << "NonConst " << NonConst << '\n');
               // if (NonConst >= 0)
               if (Prototype)
               {
@@ -644,16 +646,16 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
                   I2 = dyn_cast<Instruction>(Prototype->getOperand(NonConst));
                 }
                 if (I1 && I2)
-                  dbgs() << "before findloadarr" << *I2 << '\n'
-                         << *I1 << '\n';
+                  LLVM_DEBUG(dbgs() << "before findloadarr" << *I2 << '\n'
+                         << *I1 << '\n');
                 if (I2 && I2 != I1)
                 {
                   auto *LoadI1 = findLoadArr(I1, MaxLevel);
                   auto *LoadI2 = findLoadArr(I2, MaxLevel);
                   if (LoadI2 && LoadI1)
                   {
-                    dbgs() << "LoadArr" << *LoadI2 << '\n'
-                           << *LoadI1 << '\n';
+                    LLVM_DEBUG(dbgs() << "LoadArr" << *LoadI2 << '\n'
+                           << *LoadI1 << '\n');
                   }
 
                   if ((LoadI1 || LoadI2) && (LoadI1 != LoadI2))
@@ -677,7 +679,7 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
     }
     else if (HasCastInst)
     {
-      dbgs() << "===HasCastInst===\n";
+      LLVM_DEBUG(dbgs() << "===HasCastInst===\n");
       std::vector<Value *> NewWorklist;
       std::vector<Instruction *> NewParent;
       std::vector<int> NewOperandIdx;
@@ -723,7 +725,7 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
     }
     else
     {
-      dbgs() << "===Make symmetric===\n";
+      LLVM_DEBUG(dbgs() << "===Make symmetric===\n");
       if (HasLoad && HasConstant)
       {
         std::vector<LoadInst *> ALoads;
@@ -857,11 +859,11 @@ static bool makeSymmetricDAG(const OperandPack *OP, Packer *Pkr, VectorPack *VP)
       ++Level;
     }
   }
-  dbgs() << "Fucntion after makeSymmetricDAG\n"
-         << *Pkr->getFunction() << '\n';
+  LLVM_DEBUG(dbgs() << "Fucntion after makeSymmetricDAG\n"
+         << *Pkr->getFunction() << '\n');
   if (NeedUpdate)
   {
-    dbgs() << "Packer should be updated\n";
+    LLVM_DEBUG(dbgs() << "Packer should be updated\n");
     Pkr->updateFunction(Pkr->getFunction());
   }
 
@@ -928,20 +930,20 @@ static void improvePlan(Packer *Pkr, Plan &P,
   if (Candidates)
     Seeds.append(Candidates->Packs.begin(), Candidates->Packs.end());
 
-  dbgs() << "===Store Seeds===\n";
+  LLVM_DEBUG(dbgs() << "===Store Seeds===\n");
   for (auto *VP : Seeds)
   {
-    dbgs() << *VP << '\n';
+    LLVM_DEBUG(dbgs() << *VP << '\n');
   }
 
   Heuristic H(Pkr, Candidates);
 
   auto Improve = [&](Plan &P2, ArrayRef<const OperandPack *> OPs, VectorPack *VP) -> bool
   {
-    dbgs() << "Ops size is " << OPs.size() << " and Plan P cost is " << P.cost() << '\n';
+    LLVM_DEBUG(dbgs() << "Ops size is " << OPs.size() << " and Plan P cost is " << P.cost() << '\n');
     for (auto *OP : OPs)
     {
-      dbgs() << "===Improving===\n";
+      LLVM_DEBUG(dbgs() << "===Improving===\n");
       // try to make dag from OP to be symmetric
       if (VP)
       {
@@ -954,20 +956,20 @@ static void improvePlan(Packer *Pkr, Plan &P,
       // if (!H.solve(OP).Packs.empty())
       if (!SolvedPacks.empty())
       {
-        dbgs() << "solved packs not empty\n";
+        LLVM_DEBUG(dbgs() << "solved packs not empty\n");
         for (auto *VP : SolvedPacks)
         {
-          dbgs() << *VP << '\n';
+          LLVM_DEBUG(dbgs() << *VP << '\n');
           // VP->recompute();
         }
         runBottomUpFromOperand(OP, P2, H);
-        dbgs() << "Plan P2 after run bottom up from operand\n";
+        LLVM_DEBUG(dbgs() << "Plan P2 after run bottom up from operand\n");
         for (auto *VP : P2)
         {
-          dbgs() << *VP << '\n';
+          LLVM_DEBUG(dbgs() << *VP << '\n');
         }
       }
-      dbgs() << "cost of Plan P2 is " << P2.cost() << '\n';
+      LLVM_DEBUG(dbgs() << "cost of Plan P2 is " << P2.cost() << '\n');
     }
     if (P2.cost() < P.cost())
     {
@@ -1012,19 +1014,19 @@ static void improvePlan(Packer *Pkr, Plan &P,
       if (P2.cost() < P.cost())
       {
         P = P2;
-        errs() << "~COST 1: " << P.cost() << '\n';
+        LLVM_DEBUG(errs() << "~COST 1: " << P.cost() << '\n');
       }
       continue;
     }
 
     if (Improve(P2, VP->getOperandPacks(), const_cast<VectorPack*>(VP)))
-      errs() << "~COST 2: " << P.cost() << '\n';
+      LLVM_DEBUG(errs() << "~COST 2: " << P.cost() << '\n');
 
-    dbgs() << "===Seed and Plan===\n";
-    dbgs() << *VP << '\n';
+    LLVM_DEBUG(dbgs() << "===Seed and Plan===\n");
+    LLVM_DEBUG(dbgs() << *VP << '\n');
     for (auto *VP : P)
     {
-      dbgs() << *VP << '\n';
+      LLVM_DEBUG(dbgs() << *VP << '\n');
     }
   }
 
@@ -1038,7 +1040,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
          Improve(P2, deinterleave(VPCtx, OP, 8))*/
     )
     {
-      errs() << "~COST 3: " << P.cost() << '\n';
+      LLVM_DEBUG(errs() << "~COST 3: " << P.cost() << '\n');
     }
   }
 
@@ -1050,7 +1052,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
   bool Optimized;
   do
   {
-    errs() << "COST 4: " << P.cost() << '\n';
+    LLVM_DEBUG(errs() << "COST 4: " << P.cost() << '\n');
     Optimized = false;
     for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I)
     {
@@ -1066,8 +1068,8 @@ static void improvePlan(Packer *Pkr, Plan &P,
     }
     if (Optimized)
       continue;
-    errs() << "??? finding good concats, num operands = "
-           << std::distance(P.operands_begin(), P.operands_end()) << '\n';
+    LLVM_DEBUG(errs() << "??? finding good concats, num operands = "
+           << std::distance(P.operands_begin(), P.operands_end()) << '\n');
     for (auto I = P.operands_begin(), E = P.operands_end(); I != E; ++I)
     {
       for (auto J = P.operands_begin(); J != E; ++J)
@@ -1085,7 +1087,7 @@ static void improvePlan(Packer *Pkr, Plan &P,
       if (Optimized)
         break;
     }
-    errs() << "~~~~~~ done\n";
+    LLVM_DEBUG(errs() << "~~~~~~ done\n");
     if (Optimized)
       continue;
 
@@ -1428,17 +1430,17 @@ float optimizeBottomUp(std::vector<const VectorPack *> &Packs, Packer *Pkr,
       Candidates.Inst2Packs[i].push_back(VP);
   Plan P(Pkr);
   float ScalarCost = P.cost();
-  dbgs() << "===Vector Pack before improvePlan===\n";
+  LLVM_DEBUG(dbgs() << "===Vector Pack before improvePlan===\n");
   for (auto *VP : P)
   {
-    dbgs() << *VP << '\n';
+    LLVM_DEBUG(dbgs() << *VP << '\n');
   }
   improvePlan(Pkr, P, SeedOperands, &Candidates, BlocksToIgnore);
   Packs.insert(Packs.end(), P.begin(), P.end());
-  dbgs() << "===Vector Pack after improvePlan===\n";
+  LLVM_DEBUG(dbgs() << "===Vector Pack after improvePlan===\n");
   for (auto *VP : Packs)
   {
-    dbgs() << *VP << '\n';
+    LLVM_DEBUG(dbgs() << *VP << '\n');
   }
   if (findDepCycle(Packs, Pkr))
   {
@@ -1458,11 +1460,11 @@ float optimizeBottomUp(VectorPackSet &PackSet, Packer *Pkr,
   {
     if (!PackSet.tryAdd(VP))
     {
-      dbgs() << "try add failed with \n"
-             << *VP << '\n';
+      LLVM_DEBUG(dbgs() << "try add failed with \n"
+             << *VP << '\n');
       // PackSet.add(VP);
     }
   }
-  dbgs() << "All packs added\n";
+  LLVM_DEBUG(dbgs() << "All packs added\n");
   return Cost;
 }

@@ -3,8 +3,11 @@
 #include "MatchManager.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/VectorUtils.h"
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "VectorPack"
 
 // FIXME: we need to generalize the definition of an operand pack
 // because some of the input lanes are "DONT CARES" (e.g. _mm_div_pd)
@@ -198,7 +201,7 @@ Value *VectorPack::emitVectorStore(ArrayRef<Value *> Operands, Value *Mask,
                                    std::function<Value *(Value *)> GetScalar,
                                    IntrinsicBuilder &Builder) const {
   // Emit the vector store
-  dbgs() << "emit vector store\n";
+  LLVM_DEBUG(dbgs() << "emit vector store\n");
   Instruction *VecStore;
   if (IsGatherScatter) {
     auto *Ptrs = Operands[0];
@@ -543,9 +546,9 @@ raw_ostream &operator<<(raw_ostream &OS, const OperandPack &OP) {
   OS << "[\n";
   for (auto *V : OP)
     if (V) {
-      errs() << *V << "\n";
+      LLVM_DEBUG(errs() << *V << "\n");
     } else
-      errs() << "undef\n";
+      LLVM_DEBUG(errs() << "undef\n");
   OS << "\n]";
   return OS;
 }
@@ -579,11 +582,12 @@ bool isConstantPack(const OperandPack &OP) {
 void VectorPack::getPackedInstructions(
     SmallPtrSetImpl<Instruction *> &Insts) const {
 
-  dbgs() << "get packed instructions\n";
+  LLVM_DEBUG(dbgs() << "get packed instructions\n");
   for (auto *I: Insts)
   {
-    if (I)
-      dbgs() << *I << '\n';
+    if (I) {
+      LLVM_DEBUG(dbgs() << *I << '\n');
+    }
   }
   if (Kind == Reduction) {
     Insts.insert(Rdx->Ops.begin(), Rdx->Ops.end());

@@ -39,9 +39,12 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Vectorize.h"
 #include <set>
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
 using namespace PatternMatch;
+
+#define DEBUG_TYPE "gslp"
 
 namespace llvm {
 FunctionPass *createScalarizerPass();
@@ -135,7 +138,7 @@ public:
     default:
       llvm_unreachable("architecture not supported");
     }
-    errs() << "Loading inst wrappers: " << WrappersDir + Wrapper << '\n';
+    LLVM_DEBUG(errs() << "Loading inst wrappers: " << WrappersDir + Wrapper << '\n');
     InstWrappers = parseIRFile(WrappersDir + Wrapper, Err, M.getContext());
     if (!InstWrappers) {
       report_fatal_error(std::string("Error parsing Inst Wrappers") +
@@ -264,7 +267,7 @@ bool GSLP::runOnFunction(Function &F) {
     return false;
   if (!Filter.empty() && !F.getName().contains(Filter))
     return false;
-  errs() << "Optimizing " << F.getName() << '\n';
+  LLVM_DEBUG(errs() << "Optimizing " << F.getName() << '\n');
   if (!DisableReductionBalancing)
     balanceReductionTree(F);
   // Table holding all IR vector instructions
@@ -321,14 +324,14 @@ bool GSLP::runOnFunction(Function &F) {
   for (auto &IntToFloat : VecBindingTable.getIntToFloats())
     SupportedIntrinsics.push_back(&IntToFloat);
 
-  errs() << "~~~~ num supported intrinsics: " << SupportedIntrinsics.size()
-         << '\n';
+  LLVM_DEBUG(errs() << "~~~~ num supported intrinsics: " << SupportedIntrinsics.size()
+         << '\n');
 
   for (auto *Inst: SupportedIntrinsics)
   {
-    dbgs() << Inst->getName() << ' ';
+    LLVM_DEBUG(dbgs() << Inst->getName() << ' ');
   }
-  dbgs() << '\n';
+  LLVM_DEBUG(dbgs() << '\n');
 
   DenseMap<Loop *, UnrolledLoopTy> DupToOrigLoopMap;
   DenseMap<Instruction *, UnrolledInstruction> UnrolledIterations;
@@ -353,10 +356,12 @@ bool GSLP::runOnFunction(Function &F) {
     optimizeBottomUp(Packs, &Pkr, SeedOperands);
 
   IntrinsicBuilder Builder(*InstWrappers);
-  errs() << "Generating vector code\n";
+  LLVM_DEBUG(errs() << "Generating vector code\n");
   Packs.codegen(Builder, Pkr);
 
-  assert(!verifyFunction(F, &errs()));
+  LLVM_DEBUG(assert(!verifyFunction(F, &errs())));
+  // TODO: print function F to compare results
+  DEBUG_WITH_TYPE("function", dbgs() << F << "\n");
   return true;
 }
 

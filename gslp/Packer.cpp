@@ -8,6 +8,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "Packer"
+
 namespace {
 
 bool isScalarType(Type *Ty) {
@@ -425,8 +427,8 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
   OPI.LoadProducers.clear();
 
   unsigned NumLanes = OP->size();
-  dbgs() << "running getProducerInfo\n" << "NumLanes: " << NumLanes << '\n';
-  dbgs() << *OP << '\n';
+  LLVM_DEBUG(dbgs() << "running getProducerInfo\n" << "NumLanes: " << NumLanes << '\n');
+  LLVM_DEBUG(dbgs() << *OP << '\n');
   BitVector Elements(VPCtx.getNumValues());
   BitVector Depended(VPCtx.getNumValues());
   OPI.Feasible = true;
@@ -466,7 +468,7 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
 
   if (!OPI.Feasible || OPI.Elements.count() < 2)
   {
-    dbgs() << "Not Feasible!!!\n";
+    LLVM_DEBUG(dbgs() << "Not Feasible!!!\n");
     return OPI;
   }
     
@@ -599,7 +601,7 @@ const OperandProducerInfo &Packer::getProducerInfo(const OperandPack *OP) {
         Lanes.push_back(nullptr);
       OPI.Producers.push_back(
           VPCtx.createVectorPack(Lanes, OPI.Elements, Depended, Inst, TTI));
-      dbgs() << Inst->getName() << '\n';
+      LLVM_DEBUG(dbgs() << Inst->getName() << '\n');
     }
   }
   OPI.Feasible = !OPI.Producers.empty();

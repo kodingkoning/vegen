@@ -3,6 +3,9 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "TestConsecutiveCheck"
 
 using namespace llvm;
 
@@ -37,8 +40,9 @@ bool TestConsecutiveCheck::runOnFunction(Function &F) {
   const DataLayout &DL = F.getParent()->getDataLayout();
   for (auto &I : instructions(&F))
     for (auto &J : instructions(&F))
-      if (isConsecutive(&I, &J, DL, SE, LI))
-        errs() << I << " and " << J << " are consecutive\n";
+      if (isConsecutive(&I, &J, DL, SE, LI)) {
+        LLVM_DEBUG(errs() << I << " and " << J << " are consecutive\n");
+      }
   return false;
 }
 

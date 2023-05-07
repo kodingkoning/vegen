@@ -6,6 +6,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "VectorPackContext"
+
 struct VectorPackCache {
   using GeneralPackKey =
       std::pair<decltype(VectorPack::Matches), const InstBinding *>;
@@ -48,7 +50,7 @@ void VectorPackContext::addInstruction(Instruction *I) {
 
 void VectorPackContext::updateFunction(Function *Func)
 {
-  dbgs() << "update vector pack context\n";
+  LLVM_DEBUG(dbgs() << "update vector pack context\n");
   F = Func;
   //ScalarToIdMap.clear();
   //Scalars.clear();
