@@ -580,6 +580,7 @@ void VectorPack::getPackedInstructions(
     SmallPtrSetImpl<Instruction *> &Insts) const {
 
   dbgs() << "get packed instructions\n";
+  dbgs() << *this << '\n';
   for (auto *I: Insts)
   {
     if (I)

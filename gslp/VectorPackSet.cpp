@@ -316,6 +316,7 @@ bool VectorPackSet::isCompatibleWith(const VectorPack &VP) const {
   SmallVector<const VectorPack *> Worklist{&VP};
   DenseSet<const VectorPack *> Visited;
   while (!Worklist.empty()) {
+    dbgs() << "looping\n";
     auto *VP = Worklist.pop_back_val();
 
     bool Inserted = Visited.insert(VP).second;

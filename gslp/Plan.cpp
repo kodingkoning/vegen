@@ -9,8 +9,6 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "Plan"
-
 static cl::opt<bool>
     EnableCostVerification("verify-costs",
                            cl::desc("verify cost during vector planning"),
@@ -232,7 +230,7 @@ void Plan::decScalarUses(Instruction *I)
 {
   if (NumScalarUses[I] == 0)
   {
-    LLVM_DEBUG(dbgs() << "Scalar Uses is 0" << *I << '\n');
+    dbgs() << "Scalar Uses is 0" << *I << '\n';
   }
   else
   {
