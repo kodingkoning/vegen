@@ -33,10 +33,21 @@ void Plan::updatePacker(Packer *Pkr)
     if (!NumScalarUses.count(&I))
     {
       auto NumUses = I.getNumUses();
+
       if (NumUses == 0)
-        NumScalarUses[&I] = 1; // since the use of newly added instrcution is not updated
-      else
-        NumScalarUses[&I] = NumUses;
+      {
+        dbgs() << "NumUses is 0 " << I << '\n';
+        // NumScalarUses[&I] = 1; // since the use of newly added instrcution is not updated
+      }
+      // else
+      NumScalarUses[&I] = NumUses;
+      for (Value *O : I.operands())
+        if (auto *I2 = dyn_cast<Instruction>(O))
+        {
+          dbgs() << "incScalarUses\n";
+          dbgs() << "Instruction " << I << " operand in value " << *O << '\n';
+          incScalarUses(I2);
+        }
       if (isAlive(&I))
         Cost += Pkr->getScalarCost(&I);
     }
@@ -217,7 +228,7 @@ void Plan::kill(Instruction *I)
 
 void Plan::decScalarUses(Instruction *I)
 {
-  if (NumScalarUses[i] == 0)
+  if (NumScalarUses[I] == 0)
   {
     dbgs() << "Scalar Uses is 0" << *I << '\n';
   }
@@ -284,6 +295,7 @@ bool Plan::verifyCost() const
 
 void Plan::addImpl(const VectorPack *VP)
 {
+  dbgs() << "add VectorPack " << *VP << '\n';
   Packs.insert(VP);
   Cost += VP->getProducingCost();
   for (auto *OP : VP->getOperandPacks())
@@ -319,7 +331,11 @@ void Plan::addImpl(const VectorPack *VP)
         Cost -= Pkr->getScalarCost(I);
         for (Value *O : I->operands())
           if (auto *I2 = dyn_cast<Instruction>(O))
+          {
+            dbgs() << "decScalarUses\n";
+            dbgs() << "Instruction " << *I << " operand in value " << *O << '\n';
             decScalarUses(I2);
+          }
       }
     }
 }

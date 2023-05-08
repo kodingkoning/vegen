@@ -192,8 +192,6 @@ void runBottomUpFromOperand(
   {
     assert(P.verifyCost());
     auto *OP = Worklist.pop_back_val();
-    // auto *OP = Worklist.front();
-    // Worklist.erase(Worklist.begin()); // pop the first OperandPack
 
     if (!Visited.insert(OP).second)
       continue;
@@ -212,22 +210,19 @@ void runBottomUpFromOperand(
       continue;
 
     for (auto *VP2 : OldPacks)
+    {
+      dbgs() << "OldPacks\n";
+      dbgs() << *VP2 << '\n';
       P.remove(VP2);
+    }
+    dbgs() << "NewPacks size " << NewPacks.size() << '\n';
     for (const VectorPack *VP : NewPacks)
     {
+      //if (VP->getOperandPacks().size() == 0)
+      //  continue;
       P.add(VP);
       ArrayRef<const OperandPack *> Operands = VP->getOperandPacks();
       Worklist.append(Operands.begin(), Operands.end());
-      /*int OldLevel = OPLevel[OP];
-      for (auto* NewOP: Operands)
-      {
-        OPLevel[NewOP] = OldLevel + 1;
-      }*/
-      // for (auto *OP: Operands)
-      //{
-      //   Worklist.push_back(OP);
-      // }
-      // SmallVector<const OperandPack*> (Worklist.begin(), Worklist.end());
       if (GetExtraOperands)
         GetExtraOperands(VP, Worklist);
     }

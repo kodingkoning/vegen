@@ -303,7 +303,7 @@ void VectorPackSet::add(const VectorPack *VP) {
 bool VectorPackSet::isCompatibleWith(const VectorPack &VP) const {
   // Abort if one of the value we want to produce is produced by another pack
   if (PackedValues.anyCommon(VP.getElements())) {
-    LLVM_DEBUG(dbgs() << "failed with value from another pack\n");
+    dbgs() << "failed with value from another pack\n";
     return false;
   }
 
@@ -617,7 +617,7 @@ static void fixDefUseDominance(Function *F, DominatorTree &DT) {
   }
 
   PromoteMemToReg(Allocas, DT);
-  LLVM_DEBUG(dbgs() << "before verifyfunction\n" << *F << '\n');
+  dbgs() << "before verifyfunction\n" << *F << '\n';
   assert(!verifyFunction(*F, &errs()));
 }
 
@@ -704,7 +704,7 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
     auto *Cond = VL.getInstCond(I);
     auto *VP = ValueToPackMap.lookup(I);
     if (VP)
-      LLVM_DEBUG(dbgs() << "Value To Pack" << *VP << '\n');
+      dbgs() << "Value To Pack" << *VP << '\n';
     // I is not packed
     if (!VP || shouldSkip(VP)) {
       // Just drop these intrinsics
@@ -931,7 +931,7 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
           auto *FstLoad = dyn_cast<LoadInst>(Vals.front());
           //auto *ElmType = dyn_cast<ArrayType>(FstLoad->getPointerOperandType())->getElementType();
           auto *ElmType = FstLoad->getType();
-          LLVM_DEBUG(dbgs() << "element type\n" << *ElmType << '\n');
+          dbgs() << "element type\n" << *ElmType << '\n';
           std::vector<Constant*> Constants;
           std::vector<int> ShuffleIdxes;
           int PrevIdx = 0;
@@ -1012,14 +1012,14 @@ VectorCodeGen::emitLoop(VLoop &VL, BasicBlock *Preheader) {
     MaterializedPacks[VP] = VecInst;
   }
 
-  LLVM_DEBUG(dbgs() << "Function before replacing laod with shuffle\n" << *F << '\n');
+  dbgs() << "Function before replacing laod with shuffle\n" << *F << '\n';
   // replace all uses of load to be the result of shuffle
   for (auto &p: LoadAndShuffle)
   {
-    LLVM_DEBUG(dbgs() << "Load and shuffle\n" << *p.first << '\n' << *p.second << '\n');
+    dbgs() << "Load and shuffle\n" << *p.first << '\n' << *p.second << '\n';
     if (auto *I = dyn_cast<ShuffleVectorInst>(*p.first->user_begin()))
     {
-      LLVM_DEBUG(dbgs() << "Has shuffle " << *I << '\n');
+      dbgs() << "Has shuffle " << *I << '\n';
       p.second->insertAfter(I);
       I->replaceAllUsesWith(p.second);
       p.second->setOperand(0, I);
@@ -1251,7 +1251,7 @@ void VectorPackSet::codegen(IntrinsicBuilder &Builder, Packer &Pkr) {
     return;
 
   if (!AllPacks.empty())
-    LLVM_DEBUG(errs() << "Vectorized " << Pkr.getFunction()->getName() << '\n');
+    errs() << "Vectorized " << Pkr.getFunction()->getName() << '\n';
 
   // Fuse the loops for packs involving multiple loops
   for (auto *VP : AllPacks) {
